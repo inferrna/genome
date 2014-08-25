@@ -8,7 +8,12 @@ import random
 print( cl.get_cl_header_version() )
 
 result = 3.0
+#results = [3.0, 5.0, 2.0]
+#ivalues = [[1.0, 2.0, 3.0, 4.0], [1.0, 3.0, 1.0, 2.0], [4.0, 1.0, 1.0, 2.0]]
+coeffs = np.random.random(9)
 equation = "(a_g[gid]+2*b_g[gid])*(3*c_g[gid]+4*d_g[gid]) - "+str(result)+""
+#eqlst = ["a_g[gid]"*str(iv[0])
+#exit()
 nvars = 4
 nsamp = 500
 
@@ -26,13 +31,13 @@ __kernel void sum(__global const float *a_g, __global const float *b_g, __global
   res_g[gid] = """+equation+""";
 }
 """).build()
-a_g = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=arr4np[0])
-b_g = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=arr4np[1])
-c_g = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=arr4np[2])
-d_g = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=arr4np[3])
+arrs_g = [[]]*(nvars+1)
 res_g = cl.Buffer(ctx, mf.WRITE_ONLY, arr4np[0].nbytes)
 res_np = np.empty_like(arr4np[0])
 _arr4np = [[0]]*nvars
+global_offset = None
+g_times_l = False
+wait_for = None
 
 for cy in range(0, 130):
    # if cy>0 and cl.enqueue_fill_buffer:
@@ -40,12 +45,13 @@ for cy in range(0, 130):
    #     cl.enqueue_fill_buffer(queue, b_g, arr4np[1], 0, nsamp)
    #     cl.enqueue_fill_buffer(queue, c_g, arr4np[2], 0, nsamp)
    #     cl.enqueue_fill_buffer(queue, d_g, arr4np[3], 0, nsamp)
-    if cy>0:
-        a_g = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=arr4np[0])
-        b_g = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=arr4np[1])
-        c_g = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=arr4np[2])
-        d_g = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=arr4np[3])
-    run.sum(queue, arr_np.shape, None, a_g, b_g, c_g, d_g, res_g)
+    for i in range(0, nvars):
+        arrs_g[i] = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=arr4np[i])
+    arrs_g[-1] = res_g
+    #run.sum.set_args(*arrs_g)
+    #cl.enqueue_nd_range_kernel(queue, run.sum, arr4np[i].shape, None, global_offset, wait_for, g_times_l=g_times_l)
+    run.sum(queue, arr4np[i].shape, None, *arrs_g)#arrs_g[0], arrs_g[1], arrs_g[2], arrs_g[3], res_g)
+    print("enqueue ok")
     cl.enqueue_copy(queue, res_np, res_g)
 
 #Sort by given result
