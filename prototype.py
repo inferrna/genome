@@ -4,6 +4,14 @@
 import numpy as np
 import pyopencl as cl
 import random
+from string import ascii_lowercase
+
+def dec2str(num):
+    k = []
+    s = str(num)
+    for a in s:
+        k.append(ascii_lowercase[int(a)])
+    return ''.join(k)
 
 print( cl.get_cl_header_version() )
 
@@ -16,6 +24,15 @@ equation = "(a_g[gid]+2*b_g[gid])*(3*c_g[gid]+4*d_g[gid]) - "+str(result)+""
 #exit()
 nvars = 4
 nsamp = 500
+varnames = []
+valnames = []
+for i in range(0, nvars):
+    varnames.append(dec2str(i)+"_gnm")
+    valnames.append(dec2str(i)+"_val")
+
+print(varnames)
+print(valnames)
+
 
 arr_np = np.random.rand(nvars*nsamp).astype(np.float32) - np.random.rand(nvars*nsamp).astype(np.float32)
 
