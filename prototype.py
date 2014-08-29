@@ -16,16 +16,13 @@ def dec2str(num):
 print( cl.get_cl_header_version() )
 
 result = 1.0
-#results = [3.0, 5.0, 2.0]
-#ivalues = [[1.0, 2.0, 3.0, 4.0], [1.0, 3.0, 1.0, 2.0], [4.0, 1.0, 1.0, 2.0]]
 coeffs = np.random.random(9)
-#eqlst = ["a_g[gid]"*str(iv[0])
-#exit()
-ninpt = 1
-nvars = 400
-nsamp = 500
+ninpt = 2   #Samples count
+nvars = 40  #Count of equations members
+nsamp = 500 #Genome samples count
 varnames = []
 valnames = []
+#Names for kernel parameters
 for i in range(0, nvars):
     varnames.append(dec2str(i)+"_gnm")
     valnames.append(dec2str(i)+"_val")
@@ -44,14 +41,17 @@ print(eq)
 print(equation)
 print(varspstr)
 #exit()
+
+#Random init genome
 arr_np = np.random.rand(nvars*nsamp).astype(np.float32) - np.random.rand(nvars*nsamp).astype(np.float32)
+arr4np = arr_np.reshape(nvars, nsamp)
+#Random init equation members
 inp_np = np.random.rand(nvars*ninpt).astype(np.float32) - np.random.rand(nvars*ninpt).astype(np.float32)
+inp4np = inp_np.reshape(nvars, ninpt)
 
 ctx = cl.create_some_context()
 queue = cl.CommandQueue(ctx)
 
-arr4np = arr_np.reshape(nvars, nsamp)
-inp4np = inp_np.reshape(nvars, ninpt)
 
 mf = cl.mem_flags
 run = cl.Program(ctx, """
@@ -65,7 +65,9 @@ __kernel void sum("""+varspstr+""", __global float *res_g) {
   res_g[gid] = _res;
 }
 """).build()
+#Metabuffer for opencl datas
 arrs_g = [[]]*(2*nvars+1)
+#Results buffers (as genome counts)
 res_g = cl.Buffer(ctx, mf.WRITE_ONLY, arr4np[0].nbytes)
 res_np = np.empty_like(arr4np[0])
 _arr4np = [[0]]*nvars
@@ -90,22 +92,24 @@ for cy in range(0, 13000):
     cl.enqueue_copy(queue, res_np, res_g)
 
 #Sort by given result
-    ordr = np.argsort(res_np)
-    res_ordrd = res_np[ordr]
-    abs_res = abs(res_ordrd)
-    fltr = abs_res<100
-    abs_resf = abs_res[fltr]
+    res_np, unfltr = np.unique(res_np, return_index=True)
+    ordr = np.argsort(res_np)           #Get order
+    res_ordrd = res_np[ordr]            #Sort by order
+    abs_res = abs(res_ordrd)            #Set sorted values to absolute
+    fltr = abs_res<=abs_res.mean()      #Get filter
+    abs_resf = abs_res[fltr]  #
     mind = abs_resf.argmin()
     nwlen = len(abs_resf)
     rll = nwlen//2 - mind
     print("Median index is", mind)
+    print("Filtered length is", nwlen)
     print("Best result  is", res_ordrd[fltr][mind])
     if abs(res_ordrd[mind]) < 0.001:
-        print("Solution for", equation,"is\n", [x[ordr][fltr][mind] for x in arr4np])
+        print("Solution for", equation,"is\n", [x[unfltr][ordr][fltr][mind] for x in arr4np])
         break
-    #print(_arr4np)
     for j in range(0, len(arr4np)):
-        _arr4np[j] = np.roll(arr4np[j][ordr][fltr], rll)
+        _arr4np[j] = np.roll(arr4np[j][unfltr][ordr][fltr], rll)
+    #print(_arr4np)
     diff = nsamp - nwlen
     print("diff==", diff)
     for i in range(0, nwlen//2):
@@ -119,13 +123,15 @@ for cy in range(0, 13000):
             _arr4np[idx][i] = too
             _arr4np[idx][-(i+1)] = frm
     print("Newlen == ", len(_arr4np[0]))
-    d1 = np.array([[0]*diff]*nvars)
+    d1 = np.array([[0.0]*diff]*nvars)
     for i in range(0, diff):
         r = random.randint(0, nwlen-1)
         for j in range(0, len(d1)):
             d1[j][i] = _arr4np[j][r]
+            #print("_arr4np[",j,"][",r,"]==", _arr4np[j][r])
         ri = random.randint(0, len(d1)-1)
-        d1[ri][i] = d1[ri][i] + random.choice([-2,2])*_arr4np[ri].max()*random.random()
+        d1[ri][i] = d1[ri][i] + (2*random.random()-1)
+    #print(d1)
     for j in range(0, len(d1)):
         arr4np[j] = np.concatenate([_arr4np[j], d1[j]])
 # Check on CPU with Numpy:
