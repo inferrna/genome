@@ -16,16 +16,26 @@ def dec2str(num):
 print( cl.get_cl_header_version() )
 
 result = 1.0
-coeffs = np.random.random(9)
-ninpt = 2   #Samples count
-nvars = 40  #Count of equations members
-nsamp = 500 #Genome samples count
+ninpt = 50   #Samples count
+nvars = 40   #Count of equations members
+nsamp = 50   #Genome samples count
 varnames = []
 valnames = []
 #Names for kernel parameters
 for i in range(0, nvars):
     varnames.append(dec2str(i)+"_gnm")
     valnames.append(dec2str(i)+"_val")
+gstruct = """
+struct genomes {
+    """+'\n    '.join(['float '+dec2str(i)+';' for i in range(0, nvars)])+"""
+};
+"""
+vstruct = """
+struct vars {
+    """+'\n    '.join(['float '+dec2str(i)+';' for i in range(0, nvars)])+"""
+};
+"""
+print(struct)
 varsofid = [var+'[gid]' for var in varnames]
 valsof_i = [val+'[i]' for val in valnames]
 varsprms = ['__global const float *'+var for var in varnames]
