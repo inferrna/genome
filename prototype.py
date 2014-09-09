@@ -11,45 +11,34 @@ def dec2str(num):
     s = str(num)
     for a in s:
         k.append(ascii_lowercase[int(a)])
-    return ''.join(k)
+    return 'qq'+''.join(k)
 
 print( cl.get_cl_header_version() )
 
 result = 1.0
-ninpt = 50   #Samples count
-nvars = 40   #Count of equations members
-nsamp = 50   #Genome samples count
-varnames = []
-valnames = []
-#Names for kernel parameters
-for i in range(0, nvars):
-    varnames.append(dec2str(i)+"_gnm")
-    valnames.append(dec2str(i)+"_val")
+ninpt = 2   #Samples count
+nvars = 9   #Count of equations members
+nsamp = 5000   #Genome samples count
+varnames = [dec2str(i) for i in range(0, nvars)]
 gstruct = """
 struct genomes {
-    """+'\n    '.join(['float '+dec2str(i)+';' for i in range(0, nvars)])+"""
+    """+'\n    '.join(['float '+v+';' for v in varnames])+"""
 };
 """
 vstruct = """
 struct vars {
-    """+'\n    '.join(['float '+dec2str(i)+';' for i in range(0, nvars)])+"""
+    """+'\n    '.join(['float '+v+';' for v in varnames])+"""
 };
 """
-print(struct)
-varsofid = [var+'[gid]' for var in varnames]
-valsof_i = [val+'[i]' for val in valnames]
-varsprms = ['__global const float *'+var for var in varnames]
-valsprms = ['__global const float *'+val for val in valnames]
+print(gstruct)
+varsofid = ['gms[gid].'+var for var in varnames]
+valsof_i = ['vs[i].'+val for val in varnames]
 eq = ['*'.join(c) for c in zip(varsofid, valsof_i)]
 equation = '+'.join(eq)+" - "+str(result)+""
-varspstr = ', '.join(varsprms+valsprms)
 print(varsofid)
-print(varsprms)
 print(varnames)
-print(valnames)
 print(eq)
 print(equation)
-print(varspstr)
 #exit()
 
 #Random init genome
@@ -64,8 +53,8 @@ queue = cl.CommandQueue(ctx)
 
 
 mf = cl.mem_flags
-run = cl.Program(ctx, """
-__kernel void sum("""+varspstr+""", __global float *res_g) {
+run = cl.Program(ctx, '\n'.join([gstruct, vstruct])+"""
+__kernel void sum(__global struct vars *vs, __global struct genomes *gms, __global float *res_g) {
   int gid = get_global_id(0);
   float _res = 0.0;
   for(int i=0; i<"""+str(ninpt)+"""; i++){
@@ -76,7 +65,7 @@ __kernel void sum("""+varspstr+""", __global float *res_g) {
 }
 """).build()
 #Metabuffer for opencl datas
-arrs_g = [[]]*(2*nvars+1)
+arrs_g = [[]]*3
 #Results buffers (as genome counts)
 res_g = cl.Buffer(ctx, mf.WRITE_ONLY, arr4np[0].nbytes)
 res_np = np.empty_like(arr4np[0])
@@ -91,13 +80,12 @@ for cy in range(0, 13000):
    #     cl.enqueue_fill_buffer(queue, b_g, arr4np[1], 0, nsamp)
    #     cl.enqueue_fill_buffer(queue, c_g, arr4np[2], 0, nsamp)
    #     cl.enqueue_fill_buffer(queue, d_g, arr4np[3], 0, nsamp)
-    for i in range(0, nvars):
-        arrs_g[i] = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=arr4np[i])
-        arrs_g[i+nvars] = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=inp4np[i])
-    arrs_g[-1] = res_g
+    arrs_g[0] = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=inp_np)
+    arrs_g[1] = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=arr_np)
+    arrs_g[2] = res_g
     #run.sum.set_args(*arrs_g)
     #cl.enqueue_nd_range_kernel(queue, run.sum, arr4np[i].shape, None, global_offset, wait_for, g_times_l=g_times_l)
-    run.sum(queue, arr4np[i].shape, None, *arrs_g)#arrs_g[0], arrs_g[1], arrs_g[2], arrs_g[3], res_g)
+    run.sum(queue, arr4np[0].shape, None, *arrs_g)
     print("enqueue ok")
     cl.enqueue_copy(queue, res_np, res_g)
 
@@ -106,14 +94,15 @@ for cy in range(0, 13000):
     ordr = np.argsort(res_np)           #Get order
     res_ordrd = res_np[ordr]            #Sort by order
     abs_res = abs(res_ordrd)            #Set sorted values to absolute
-    fltr = abs_res<=abs_res.mean()      #Get filter
+    fltr = abs_res<=np.median(abs_res)  #Get filter
     abs_resf = abs_res[fltr]  #
     mind = abs_resf.argmin()
     nwlen = len(abs_resf)
     rll = nwlen//2 - mind
+    best_res = res_ordrd[fltr][mind]
     print("Median index is", mind)
     print("Filtered length is", nwlen)
-    print("Best result  is", res_ordrd[fltr][mind])
+    print("Best result  is", best_res)
     if abs(res_ordrd[mind]) < 0.001:
         print("Solution for", equation,"is\n", [x[unfltr][ordr][fltr][mind] for x in arr4np])
         break
@@ -140,7 +129,7 @@ for cy in range(0, 13000):
             d1[j][i] = _arr4np[j][r]
             #print("_arr4np[",j,"][",r,"]==", _arr4np[j][r])
         ri = random.randint(0, len(d1)-1)
-        d1[ri][i] = d1[ri][i] + (2*random.random()-1)
+        d1[ri][i] = d1[ri][i] + (2*random.random()-1)*(best_res/nvars)
     #print(d1)
     for j in range(0, len(d1)):
         arr4np[j] = np.concatenate([_arr4np[j], d1[j]])
