@@ -3,8 +3,10 @@
 
 import numpy as np
 import pyopencl as cl
+from pyopencl.reduction import ReductionKernel
 import random
 from string import ascii_lowercase
+import reducecl
 
 def dec2str(num):
     k = []
@@ -16,9 +18,9 @@ def dec2str(num):
 print( cl.get_cl_header_version() )
 
 result = 1.0
-ninpt = 2   #Samples count
+ninpt = 3   #Samples count
 nvars = 9   #Count of equations members
-nsamp = 5000   #Genome samples count
+nsamp = 4096   #Genome samples count
 varnames = [dec2str(i) for i in range(0, nvars)]
 gstruct = """
 struct genomes {
@@ -73,8 +75,12 @@ _arr4np = [[0]]*nvars
 global_offset = None
 g_times_l = False
 wait_for = None
+currmin = (9999999999, 0,)
+o = np.empty(1).astype(np.float32)
+o_buf = cl.Buffer(ctx, mf.WRITE_ONLY, size=o.nbytes)
 
-for cy in range(0, 13000):
+
+for cy in range(1, 1300):
    # if cy>0 and cl.enqueue_fill_buffer:
    #     cl.enqueue_fill_buffer(queue, a_g, arr4np[0], 0, nsamp)
    #     cl.enqueue_fill_buffer(queue, b_g, arr4np[1], 0, nsamp)
@@ -88,13 +94,17 @@ for cy in range(0, 13000):
     run.sum(queue, arr4np[0].shape, None, *arrs_g)
     print("enqueue ok")
     cl.enqueue_copy(queue, res_np, res_g)
-
+    reducecl.reduce_sum(ctx, queue, res_g, nsamp, o_buf)
+    cl.enqueue_copy(queue, o, o_buf)
+    print("total sum is", o, np.sum(res_np))
 #Sort by given result
     res_np, unfltr = np.unique(res_np, return_index=True)
-    ordr = np.argsort(res_np)           #Get order
-    res_ordrd = res_np[ordr]            #Sort by order
-    abs_res = abs(res_ordrd)            #Set sorted values to absolute
-    fltr = abs_res<=np.median(abs_res)  #Get filter
+    ordr = np.argsort(res_np)                                   #Get order
+    res_ordrd = res_np[ordr]                                    #Sort by order
+    abs_res = abs(res_ordrd)                                    #Set sorted values to absolute
+    fltrm = abs_res<=np.median(abs_res)                         #Get median filter
+    fltrr = (abs_res<=2*np.median(abs_res))*(np.random.randint(0, 2, len(abs_res)) > 0)           #Get random filter
+    fltr = fltrm #+ fltrr
     abs_resf = abs_res[fltr]  #
     mind = abs_resf.argmin()
     nwlen = len(abs_resf)
@@ -103,6 +113,8 @@ for cy in range(0, 13000):
     print("Median index is", mind)
     print("Filtered length is", nwlen)
     print("Best result  is", best_res)
+    if best_res<currmin[0]:
+        currmin = (best_res, cy,)
     if abs(res_ordrd[mind]) < 0.001:
         print("Solution for", equation,"is\n", [x[unfltr][ordr][fltr][mind] for x in arr4np])
         break
@@ -134,3 +146,4 @@ for cy in range(0, 13000):
     for j in range(0, len(d1)):
         arr4np[j] = np.concatenate([_arr4np[j], d1[j]])
 # Check on CPU with Numpy:
+print(currmin)
