@@ -54,19 +54,19 @@ def reduce_min(ctx, queue, a_buf, N, o_buf, o_lid):
         uint lid = get_local_id(0);
         uint gs = get_local_size(0);
         b[lid] = a[gid];
-        c[lid] = lid;
+        c[lid] = gid;
         barrier(CLK_LOCAL_MEM_FENCE);
         for(uint s = gs/2; s > 0; s >>= 1) {
             if(lid < s && b[lid] > b[lid+s]) {
                 b[lid] = b[lid+s];
-                c[lid] = lid+s;
+                c[lid] = gid+s;
             }
             barrier(CLK_LOCAL_MEM_FENCE);
         }
         if(lid == 0) {
-            r[wid] = b[lid];
-            o_lid[0] = q[c[lid]];
-            q[wid] = wid*gs+c[lid];
+            r[wid] = b[0];
+            o_lid[0] = q[c[0]]; //2nd iteration, return value of gid
+            q[wid] = c[lid]; //1st iteration, save min's git for each group
         }
     }
     """).build()
