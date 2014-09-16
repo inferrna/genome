@@ -76,8 +76,10 @@ global_offset = None
 g_times_l = False
 wait_for = None
 currmin = (9999999999, 0,)
-o = np.empty(1).astype(np.float32)
-o_buf = cl.Buffer(ctx, mf.WRITE_ONLY, size=o.nbytes)
+obuf = np.empty(1).astype(np.float32)
+olid = np.empty(1).astype(np.uint32)
+o_buf = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
+o_lid = cl.Buffer(ctx, mf.WRITE_ONLY, size=olid.nbytes)
 
 
 for cy in range(1, 1300):
@@ -94,9 +96,16 @@ for cy in range(1, 1300):
     run.sum(queue, arr4np[0].shape, None, *arrs_g)
     print("enqueue ok")
     cl.enqueue_copy(queue, res_np, res_g)
+    #Reduce sum
     reducecl.reduce_sum(ctx, queue, res_g, nsamp, o_buf)
-    cl.enqueue_copy(queue, o, o_buf)
-    print("total sum is", o, np.sum(res_np))
+    cl.enqueue_copy(queue, obuf, o_buf)
+    print("total sum is", obuf, np.sum(res_np))
+    #Reduce minimal
+    reducecl.reduce_min(ctx, queue, res_g, nsamp, o_buf, o_lid)
+    cl.enqueue_copy(queue, obuf, o_buf)
+    cl.enqueue_copy(queue, olid, o_lid)
+    print("min value is", obuf, np.min(res_np))
+    print("min index is", olid, res_np.argmin(axis=0))
 #Sort by given result
     res_np, unfltr = np.unique(res_np, return_index=True)
     ordr = np.argsort(res_np)                                   #Get order
