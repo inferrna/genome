@@ -6,7 +6,7 @@ import pyopencl as cl
 from pyopencl.reduction import ReductionKernel
 import random
 from string import ascii_lowercase
-import reducecl
+from reducecl import cl_reduce
 
 def dec2str(num):
     k = []
@@ -80,7 +80,7 @@ obuf = np.empty(1).astype(np.float32)
 olid = np.empty(1).astype(np.uint32)
 o_buf = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
 o_lid = cl.Buffer(ctx, mf.WRITE_ONLY, size=olid.nbytes)
-
+clreducer = cl_reduce(ctx)
 
 for cy in range(1, 1300):
    # if cy>0 and cl.enqueue_fill_buffer:
@@ -97,11 +97,11 @@ for cy in range(1, 1300):
     print("enqueue ok")
     cl.enqueue_copy(queue, res_np, res_g)
     #Reduce sum
-    reducecl.reduce_sum(ctx, queue, res_g, nsamp, o_buf)
+    clreducer.reduce_sum(queue, res_g, nsamp, o_buf)
     cl.enqueue_copy(queue, obuf, o_buf)
     print("total sum is", obuf, np.sum(res_np))
     #Reduce minimal
-    reducecl.reduce_min(ctx, queue, res_g, nsamp, o_buf, o_lid)
+    clreducer.reduce_min(queue, res_g, nsamp, o_buf, o_lid)
     cl.enqueue_copy(queue, obuf, o_buf)
     cl.enqueue_copy(queue, olid, o_lid)
     print("min value is", obuf, np.min(res_np))
