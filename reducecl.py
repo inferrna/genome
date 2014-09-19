@@ -2,10 +2,10 @@ import pyopencl as cl
 import numpy as np
 mf = cl.mem_flags
 class cl_reduce():
-    def __init__(self, ctx):
+    def __init__(self, ctx, numitems):
         self.ctx = ctx
         self.n_threads = ctx.get_info(cl.context_info.DEVICES)[0].max_work_group_size
-        self.prgsm = cl.Program(ctx, """
+        self.prgsm_fst = cl.Program(ctx, """
         __kernel void reduce(__global float *a,
         __global float *r,
         __local float *b)
@@ -23,6 +23,26 @@ class cl_reduce():
                 barrier(CLK_LOCAL_MEM_FENCE);
             }
             if(lid == 0) r[wid] = b[lid];
+        }
+        """).build()
+        self.prgsm_med = cl.Program(ctx, """
+        __kernel void reduce(__global float *a,
+        __global float *r,
+        __local float *b)
+        {
+            uint gid = get_global_id(0);
+            uint wid = get_group_id(0);
+            uint lid = get_local_id(0);
+            uint gs = get_local_size(0);
+            b[lid] = a[gid];
+            barrier(CLK_LOCAL_MEM_FENCE);
+            for(uint s = gs/2; s > 0; s >>= 1) {
+                if(lid < s) {
+                    b[lid] += b[lid+s];
+                }
+                barrier(CLK_LOCAL_MEM_FENCE);
+            }
+            if(lid == 0) r[wid] = b[lid]/"""+str(numitems)+""";
         }
         """).build()
         self.prgmna = cl.Program(ctx, """
@@ -49,7 +69,7 @@ class cl_reduce():
             }
             if(lid == 0) {
                 r[wid] = b[0];
-                q[wid] = c[lid];    //1st iteration, save min's gid for each group
+                q[wid] = c[0];    //1st iteration, save min's gid for each group
             }
         }
         """).build()
@@ -71,7 +91,7 @@ class cl_reduce():
             for(uint s = gs/2; s > 0; s >>= 1) {
                 if(lid < s && b[lid] > b[lid+s]) {
                     b[lid] = b[lid+s];
-                    c[lid] = lid+s;
+                    c[lid] = gid+s;
                 }
                 barrier(CLK_LOCAL_MEM_FENCE);
             }
@@ -86,11 +106,11 @@ class cl_reduce():
         r_buf = cl.Buffer(self.ctx, mf.READ_WRITE, size=r.nbytes)
         loc_buf = cl.LocalMemory(4*self.n_threads)
         print("N==", N, "n_threads==", self.n_threads)
-        evt = self.prgsm.reduce(queue, (N,), (self.n_threads,), a_buf, r_buf, loc_buf)
+        evt = self.prgsm_fst.reduce(queue, (N,), (self.n_threads,), a_buf, r_buf, loc_buf)
         evt.wait()
         #print(evt.profile.end - evt.profile.start)
         n_threads = N//self.n_threads
-        evt = self.prgsm.reduce(queue, (n_threads,), (n_threads,), r_buf, o_buf, loc_buf)
+        evt = self.prgsm_med.reduce(queue, (n_threads,), (n_threads,), r_buf, o_buf, loc_buf)
         evt.wait()
         #print(evt.profile.end - evt.profile.start)
 

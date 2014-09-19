@@ -78,9 +78,10 @@ wait_for = None
 currmin = (9999999999, 0,)
 obuf = np.empty(1).astype(np.float32)
 olid = np.empty(1).astype(np.uint32)
-o_buf = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
+o_med = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
+o_min = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
 o_lid = cl.Buffer(ctx, mf.WRITE_ONLY, size=olid.nbytes)
-clreducer = cl_reduce(ctx)
+clreducer = cl_reduce(ctx, nsamp)
 
 for cy in range(1, 1300):
    # if cy>0 and cl.enqueue_fill_buffer:
@@ -97,12 +98,12 @@ for cy in range(1, 1300):
     print("enqueue ok")
     cl.enqueue_copy(queue, res_np, res_g)
     #Reduce sum
-    clreducer.reduce_sum(queue, res_g, nsamp, o_buf)
-    cl.enqueue_copy(queue, obuf, o_buf)
+    clreducer.reduce_sum(queue, res_g, nsamp, o_med)
+    cl.enqueue_copy(queue, obuf, o_med)
     print("total sum is", obuf, np.sum(res_np))
     #Reduce minimal
-    clreducer.reduce_min(queue, res_g, nsamp, o_buf, o_lid)
-    cl.enqueue_copy(queue, obuf, o_buf)
+    clreducer.reduce_min(queue, res_g, nsamp, o_min, o_lid)
+    cl.enqueue_copy(queue, obuf, o_min)
     cl.enqueue_copy(queue, olid, o_lid)
     print("min value is", obuf, np.min(res_np))
     print("min index is", olid, res_np.argmin(axis=0))
