@@ -63,7 +63,7 @@ class cl_reduce():
             for(uint s = gs/2; s > 0; s >>= 1) {
                 if(lid < s && b[lid] > b[lid+s]) {
                     b[lid] = b[lid+s];
-                    c[lid] = gid+s;
+                    c[lid] = c[lid+s];
                 }
                 barrier(CLK_LOCAL_MEM_FENCE);
             }
@@ -91,7 +91,7 @@ class cl_reduce():
             for(uint s = gs/2; s > 0; s >>= 1) {
                 if(lid < s && b[lid] > b[lid+s]) {
                     b[lid] = b[lid+s];
-                    c[lid] = gid+s;
+                    c[lid] = c[lid+s];
                 }
                 barrier(CLK_LOCAL_MEM_FENCE);
             }
