@@ -5,6 +5,10 @@ class cl_reduce():
     def __init__(self, ctx, numitems):
         self.ctx = ctx
         self.n_threads = ctx.get_info(cl.context_info.DEVICES)[0].max_work_group_size
+        #Init parents with indexes
+        parentsh   = np.arange(start=0, stop=numitems, dtype=np.ushort)
+        self.parentsg  = cl.Buffer(ctx, mf.WRITE_ONLY | mf.COPY_HOST_PTR, hostbuf=parentsh)
+        self.gparentsg = cl.Buffer(ctx, mf.WRITE_ONLY | mf.COPY_HOST_PTR, hostbuf=parentsh)
         self.prgsm_fst = cl.Program(ctx, """
         __kernel void reduce(__global float *a,
         __global float *r,
