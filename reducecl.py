@@ -1,5 +1,7 @@
 import pyopencl as cl
 import numpy as np
+from pyopencl.algorithm import RadixSort
+
 mf = cl.mem_flags
 class cl_reduce():
     def __init__(self, ctx, numitems):
@@ -49,6 +51,7 @@ class cl_reduce():
             if(lid == 0) r[wid] = b[lid]/"""+str(numitems)+""";
         }
         """).build()
+#Minimal
         self.prgmna = cl.Program(ctx, """
         __kernel void reduce(__global float *a,
         __global float *r,
@@ -105,6 +108,18 @@ class cl_reduce():
             }
         }
         """).build()
+#Sort
+        self.prgsrt = cl.Program(ctx, """
+        #define data_t float
+
+        __kernel void pbcfour(__global data_t * data,
+        __global data_t * out,
+        __local data_t * aux)
+        {
+          event_t event[4];
+          event[0] = async_work_group_copy(loffsets, offsets, , 0);
+        }
+        """).build()
     def reduce_sum(self, queue, a_buf, N, o_buf):
         r = np.empty(self.n_threads).astype(np.float32)
         r_buf = cl.Buffer(self.ctx, mf.READ_WRITE, size=r.nbytes)
@@ -117,7 +132,6 @@ class cl_reduce():
         evt = self.prgsm_med.reduce(queue, (n_threads,), (n_threads,), r_buf, o_buf, loc_buf)
         evt.wait()
         #print(evt.profile.end - evt.profile.start)
-
     def reduce_min(self, queue, a_buf, N, o_buf, o_lid):
         r = np.empty(self.n_threads).astype(np.float32)
         r_buf = cl.Buffer(self.ctx, mf.READ_WRITE, size=r.nbytes)
@@ -132,4 +146,10 @@ class cl_reduce():
         evt = self.prgmnb.reduce(queue, (n_threads,), (n_threads,), r_buf, o_buf, q_buf, o_lid, loc_buf, loc_lid)
         evt.wait()
         #print(evt.profile.end - evt.profile.start)
+
+    def sort(self, queue, N, a_buf, o_buf):
+        loc_buf = cl.LocalMemory(4*self.n_threads)
+        print("N==", N, "n_threads==", self.n_threads)
+        evt = self.prgsrt.pbcfour(queue, (N,), (self.n_threads,), a_buf, o_buf, loc_buf)
+        evt.wait()
 

@@ -4,6 +4,8 @@
 import numpy as np
 import pyopencl as cl
 from pyopencl.reduction import ReductionKernel
+from pyopencl.algorithm import RadixSort
+import pyopencl.array as cl_array
 import random
 from string import ascii_lowercase
 from reducecl import cl_reduce
@@ -20,7 +22,7 @@ print( cl.get_cl_header_version() )
 result = 1.0
 ninpt = 3   #Samples count
 nvars = 9   #Count of equations members
-nsamp = 4096   #Genome samples count
+nsamp = 16384   #Genome samples count
 varnames = [dec2str(i) for i in range(0, nvars)]
 gstruct = """
 struct genomes {
@@ -82,10 +84,14 @@ o_med = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
 o_min = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
 o_lid = cl.Buffer(ctx, mf.WRITE_ONLY, size=olid.nbytes)
 clreducer = cl_reduce(ctx, nsamp)
-parentsh   = np.arange(start=0, stop=numitems, dtype=np.ushort)
+parentsh   = np.arange(start=0, stop=nsamp, dtype=np.ushort)
 parentsg  = cl.Buffer(ctx, mf.WRITE_ONLY | mf.COPY_HOST_PTR, hostbuf=parentsh)
 gparentsg = cl.Buffer(ctx, mf.WRITE_ONLY | mf.COPY_HOST_PTR, hostbuf=parentsh)
-sort = RadixSort(ctx, "float *res", key_expr="res[i]", sort_arg_names=["res"])
+numsg = cl_array.arange(queue, 0, nsamp, 1, dtype=np.ushort) 
+numsh = np.empty(nsamp).astype(np.ushort)
+ressh = np.empty(nsamp).astype(np.float32)
+ressg = cl.Buffer(ctx, mf.WRITE_ONLY, arr4np[0].nbytes)
+sort = RadixSort(ctx, "float *res, unsigned short *nums", key_expr="res[i]", sort_arg_names=["nums"])
 
 
 for cy in range(1, 1300):
@@ -107,6 +113,9 @@ for cy in range(1, 1300):
     cl.enqueue_copy(queue, olid, o_lid)
     print("min value is", obuf, np.min(res_np))
     print("min index is", olid, res_np.argmin(axis=0))
+    clreducer.sort(queue, nsamp, res_g, ressg)
+    cl.enqueue_copy(queue, ressh, ressg)
+    print(ressh[:12])
 #Sort by given result
     res_np, unfltr = np.unique(res_np, return_index=True)
     ordr = np.argsort(res_np)                                   #Get order
