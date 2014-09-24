@@ -19,10 +19,13 @@ def dec2str(num):
 
 print( cl.get_cl_header_version() )
 
+ctx = cl.create_some_context()
+queue = cl.CommandQueue(ctx)
+
 result = 1.0
 ninpt = 3   #Samples count
 nvars = 9   #Count of equations members
-nsamp = 16384   #Genome samples count
+nsamp = ctx.get_info(cl.context_info.DEVICES)[0].max_work_group_size #Genome samples count (current sort limitation to local_size)
 varnames = [dec2str(i) for i in range(0, nvars)]
 gstruct = """
 struct genomes {
@@ -51,9 +54,6 @@ arr4np = arr_np.reshape(nvars, nsamp)
 #Random init equation members
 inp_np = np.random.rand(nvars*ninpt).astype(np.float32) - np.random.rand(nvars*ninpt).astype(np.float32)
 inp4np = inp_np.reshape(nvars, ninpt)
-
-ctx = cl.create_some_context()
-queue = cl.CommandQueue(ctx)
 
 
 mf = cl.mem_flags
@@ -115,7 +115,7 @@ for cy in range(1, 1300):
     print("min index is", olid, res_np.argmin(axis=0))
     clreducer.sort(queue, nsamp, res_g, ressg)
     cl.enqueue_copy(queue, ressh, ressg)
-    print(ressh[:12])
+    print(ressh[-12:])
 #Sort by given result
     res_np, unfltr = np.unique(res_np, return_index=True)
     ordr = np.argsort(res_np)                                   #Get order
