@@ -111,17 +111,19 @@ class cl_reduce():
 #Sort
         self.prgsrt = cl.Program(ctx, """
             #define data_t float
-            __kernel void ParallelBitonic_Local(__global const data_t * in,__global data_t * out,__local data_t * aux)
+            __kernel void ParallelBitonic_Local(__global const data_t * in, __global uint * out, __local data_t * aux, __local uint * idxs)
             {
               int i = get_local_id(0); // index in workgroup
               int wg = get_local_size(0); // workgroup size = block size, power of 2
               bool smaller, swap;
               data_t iData, jData;
+              uint jidx, iidx;
               // Move IN, OUT to block start
               int offset = get_group_id(0) * wg;
               in += offset; out += offset;
               // Load block in AUX[WG]
               aux[i] = in[i];
+              idxs[i] = i;
               barrier(CLK_LOCAL_MEM_FENCE); // make sure AUX is entirely up to date
             
               // Loop on sorted sequence length
@@ -134,16 +136,19 @@ class cl_reduce():
                   int j = i ^ inc; // sibling to compare
                   iData = aux[i];
                   jData = aux[j];
+                  iidx = idxs[i];
+                  jidx = idxs[j];
                   smaller = (jData < iData) || ( jData == iData && j < i );
                   swap = smaller ^ (j < i) ^ direction;
                   barrier(CLK_LOCAL_MEM_FENCE);
                   aux[i] = (swap)?jData:iData;
+                  idxs[i] = (swap)?jidx:iidx;
                   barrier(CLK_LOCAL_MEM_FENCE);
                 }
               }
             
               // Write output
-              out[i] = aux[i];
+              out[i] = idxs[i];
             }
         """).build()
     def reduce_sum(self, queue, a_buf, N, o_buf):
@@ -174,8 +179,9 @@ class cl_reduce():
         #print(evt.profile.end - evt.profile.start)
 
     def sort(self, queue, N, a_buf, o_buf):
-        loc_buf = cl.LocalMemory(16*self.n_threads)
+        loc_aux = cl.LocalMemory(16*self.n_threads)
+        loc_idx = cl.LocalMemory(16*self.n_threads)
         print("N==", N, "n_threads==", self.n_threads)
-        evt = self.prgsrt.ParallelBitonic_Local(queue, (self.n_threads,), (self.n_threads,), a_buf, o_buf, loc_buf)
+        evt = self.prgsrt.ParallelBitonic_Local(queue, (self.n_threads,), (self.n_threads,), a_buf, o_buf, loc_aux, loc_idx)
         evt.wait()
 

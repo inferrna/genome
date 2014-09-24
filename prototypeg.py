@@ -70,9 +70,6 @@ __kernel void sum(__global struct vars *vs, __global struct genomes *gms, __glob
 """).build()
 #Metabuffer for opencl datas
 arrs_g = [[]]*3
-#Results buffers (as genome counts)
-res_g = cl.Buffer(ctx, mf.WRITE_ONLY, arr4np[0].nbytes)
-res_np = np.empty_like(arr4np[0])
 _arr4np = [[0]]*nvars
 global_offset = None
 g_times_l = False
@@ -89,10 +86,11 @@ parentsg  = cl.Buffer(ctx, mf.WRITE_ONLY | mf.COPY_HOST_PTR, hostbuf=parentsh)
 gparentsg = cl.Buffer(ctx, mf.WRITE_ONLY | mf.COPY_HOST_PTR, hostbuf=parentsh)
 numsg = cl_array.arange(queue, 0, nsamp, 1, dtype=np.ushort) 
 numsh = np.empty(nsamp).astype(np.ushort)
-ressh = np.empty(nsamp).astype(np.float32)
-ressg = cl.Buffer(ctx, mf.WRITE_ONLY, arr4np[0].nbytes)
-sort = RadixSort(ctx, "float *res, unsigned short *nums", key_expr="res[i]", sort_arg_names=["nums"])
-
+#Results buffers (as genome counts)
+res_np = np.empty(nsamp).astype(np.float32)
+res_g = cl.Buffer(ctx, mf.WRITE_ONLY, res_np.nbytes)
+ressh = np.empty(nsamp).astype(np.uint32)
+ressg = cl.Buffer(ctx, mf.WRITE_ONLY, ressh.nbytes)
 
 for cy in range(1, 1300):
     arrs_g[0] = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=inp_np)
@@ -102,6 +100,7 @@ for cy in range(1, 1300):
     #cl.enqueue_nd_range_kernel(queue, run.sum, arr4np[i].shape, None, global_offset, wait_for, g_times_l=g_times_l)
     run.sum(queue, arr4np[0].shape, None, *arrs_g)
     print("enqueue ok")
+    res_np = np.empty(nsamp).astype(np.float32)
     cl.enqueue_copy(queue, res_np, res_g)
     #Reduce sum
     clreducer.reduce_sum(queue, res_g, nsamp, o_med)
@@ -115,7 +114,8 @@ for cy in range(1, 1300):
     print("min index is", olid, res_np.argmin(axis=0))
     clreducer.sort(queue, nsamp, res_g, ressg)
     cl.enqueue_copy(queue, ressh, ressg)
-    print(ressh[-12:])
+    print(len(res_np), " vs ", ressh.max() )
+    print(res_np[ressh])
 #Sort by given result
     res_np, unfltr = np.unique(res_np, return_index=True)
     ordr = np.argsort(res_np)                                   #Get order
