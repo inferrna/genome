@@ -67,6 +67,18 @@ __kernel void sum(__global struct vars *vs, __global struct genomes *gms, __glob
   }
   res_g[gid] = _res;
 }
+
+__kernel void replicate(__global struct genomes *gms, __global uint srt_idxs,\
+                        __global uint parents, __global uint gparents,\
+                        __global uint pcnt, __global uint gpcnt) {
+  int gid = get_global_id(0);
+  float _res = 0.0;
+  for(int i=0; i<"""+str(ninpt)+"""; i++){
+    _res += fabs("""+equation+""");
+    //_res += """+equation+""";
+  }
+  res_g[gid] = _res;
+}
 """).build()
 #Metabuffer for opencl datas
 arrs_g = [[]]*3
