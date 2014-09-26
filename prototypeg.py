@@ -72,12 +72,9 @@ __kernel void replicate(__global struct genomes *gms, __global uint srt_idxs,\
                         __global uint parents, __global uint gparents,\
                         __global uint pcnt, __global uint gpcnt) {
   int gid = get_global_id(0);
-  float _res = 0.0;
-  for(int i=0; i<"""+str(ninpt)+"""; i++){
-    _res += fabs("""+equation+""");
-    //_res += """+equation+""";
-  }
-  res_g[gid] = _res;
+  int ngid = gid+"""+str(nsamp)+""">>1; //Next gid
+  if
+
 }
 """).build()
 #Metabuffer for opencl datas
@@ -93,9 +90,16 @@ o_med = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
 o_min = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
 o_lid = cl.Buffer(ctx, mf.WRITE_ONLY, size=olid.nbytes)
 clreducer = cl_reduce(ctx, nsamp)
+#Parents and grandparents
 parentsh   = np.arange(start=0, stop=nsamp, dtype=np.ushort)
 parentsg  = cl.Buffer(ctx, mf.WRITE_ONLY | mf.COPY_HOST_PTR, hostbuf=parentsh)
 gparentsg = cl.Buffer(ctx, mf.WRITE_ONLY | mf.COPY_HOST_PTR, hostbuf=parentsh)
+#Parents and grandparents counts
+parentsc = np.empty(1).astype(np.ushort)
+parentsc.fill(1)
+parentscg = cl.Buffer(ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=parentsc)
+gparentscg = cl.Buffer(ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=parentsc)
+
 numsg = cl_array.arange(queue, 0, nsamp, 1, dtype=np.ushort) 
 numsh = np.empty(nsamp).astype(np.ushort)
 #Results buffers (as genome counts)
