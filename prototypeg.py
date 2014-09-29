@@ -68,13 +68,13 @@ __kernel void sum(__global struct vars *vs, __global struct genomes *gms, __glob
   res_g[gid] = _res;
 }
 
-__kernel void replicate(__global struct genomes *gms, __global uint srt_idxs,\
-                        __global uint parents, __global uint gparents,\
-                        __global uint pcnt, __global uint gpcnt) {
+__kernel void replicate(__global struct genomes *gms, __global struct genomes *tmpgms, __global uint *srt_idxs) {
   int gid = get_global_id(0);
   int ngid = gid+"""+str(nsamp)+""">>1; //Next gid
-  if
-
+}
+__kernel void gmscpy(__global struct genomes *gms, __global struct genomes *tmpgms) {
+  int gid = get_global_id(0);
+  gms[gid] = tmpgms[gid];
 }
 """).build()
 #Metabuffer for opencl datas
@@ -89,17 +89,9 @@ olid = np.empty(1).astype(np.uint32)
 o_med = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
 o_min = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
 o_lid = cl.Buffer(ctx, mf.WRITE_ONLY, size=olid.nbytes)
+tmpgms = cl.Buffer(ctx, mf.WRITE_ONLY, arr_np.nbytes)
 clreducer = cl_reduce(ctx, nsamp)
 #Parents and grandparents
-parentsh   = np.arange(start=0, stop=nsamp, dtype=np.ushort)
-parentsg  = cl.Buffer(ctx, mf.WRITE_ONLY | mf.COPY_HOST_PTR, hostbuf=parentsh)
-gparentsg = cl.Buffer(ctx, mf.WRITE_ONLY | mf.COPY_HOST_PTR, hostbuf=parentsh)
-#Parents and grandparents counts
-parentsc = np.empty(1).astype(np.ushort)
-parentsc.fill(1)
-parentscg = cl.Buffer(ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=parentsc)
-gparentscg = cl.Buffer(ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=parentsc)
-
 numsg = cl_array.arange(queue, 0, nsamp, 1, dtype=np.ushort) 
 numsh = np.empty(nsamp).astype(np.ushort)
 #Results buffers (as genome counts)
@@ -107,6 +99,16 @@ res_np = np.empty(nsamp).astype(np.float32)
 res_g = cl.Buffer(ctx, mf.WRITE_ONLY, res_np.nbytes)
 ressh = np.empty(nsamp).astype(np.uint32)
 ressg = cl.Buffer(ctx, mf.WRITE_ONLY, ressh.nbytes)
+
+#Generate indices for cloning
+s = np.concatenate((np.array([0], dtype=np.uint), np.linspace(2, 7, num=nsamp//4).astype(np.uint).cumsum(),))
+hs = np.empty(nsamp, dtype=np.uint)
+hs.fill(0)
+for x in range(0, len(s)-1):
+    sx = np.arange(s[x], s[x+1]).astype(np.uint)
+    for sxi in sx:
+        if sxi<len(s): hs[sxi] = x
+print(hs[:16])
 
 for cy in range(1, 1300):
     arrs_g[0] = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=inp_np)
