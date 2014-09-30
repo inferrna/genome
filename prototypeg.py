@@ -58,6 +58,7 @@ inp4np = inp_np.reshape(nvars, ninpt)
 
 mf = cl.mem_flags
 run = cl.Program(ctx, '\n'.join([gstruct, vstruct])+"""
+#DEFINE nvars """+str(nvars)+"""
 __kernel void sum(__global struct vars *vs, __global struct genomes *gms, __global float *res_g) {
   int gid = get_global_id(0);
   float _res = 0.0;
@@ -68,11 +69,17 @@ __kernel void sum(__global struct vars *vs, __global struct genomes *gms, __glob
   res_g[gid] = _res;
 }
 
-__kernel void replicate(__global struct genomes *gms, __global struct genomes *tmpgms, __global uint *srt_idxs) {
+__kernel void replicate_mutate(__global struct genomes *gms, __global struct genomes *tmpgms,\
+                               __global uint *srt_idxs, __global float *res_g,\
+                               __global struct genomes *rands) {
   int gid = get_global_id(0);
-  int ngid = gid+"""+str(nsamp)+""">>1; //Next gid
+  int idx = srt_idxs[gid];
+  float res = res_g[idx];
+  tmpgms[gid] = gms[idx];
+
 }
-__kernel void gmscpy(__global struct genomes *gms, __global struct genomes *tmpgms) {
+
+__kernel void fillgms(__global struct genomes *gms, __global struct genomes *tmpgms) {
   int gid = get_global_id(0);
   gms[gid] = tmpgms[gid];
 }
