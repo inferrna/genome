@@ -5,16 +5,12 @@ import numpy as np
 import pyopencl as cl
 mf = cl.mem_flags
 
-class cl_reduce():
+class randfloat():
     def __init__(self, ctx, numitems):
         self.sz = numitems
         self.queue = cl.CommandQueue(ctx)
         self.ctx = ctx
-        self.a_np = np.random.randint(low=1, high=2147483647, size=self.sz).astype(np.uint32)
-        self.o_np = np.empty(self.sz).astype(np.float32)
-        self.a_g =   cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.a_np)
-        self.o_g =   cl.Buffer(self.ctx, mf.WRITE_ONLY, size=self.o_np.nbytes)
-        self.res_g = cl.Buffer(self.ctx, mf.WRITE_ONLY, self.a_np.nbytes)
+        self.a_g =  cl.Buffer(self.ctx, mf.WRITE_only, numitems*4)
         self.prg =  cl.Program(self.ctx, """
         int rand(uint* seed) // 1 <= *seed < m
         {
@@ -34,7 +30,7 @@ class cl_reduce():
             uint seed = seed_memory[gid];
             rand(&seed); // Generate the next random number in the sequence.
             seed_memory[gid] = seed;
-            out[gid] = seed/2147483647.0; // Save the seed for the next time this kernel gets enqueued.
+            out[gid] = 2*((seed/2147483647.0)-0.5); // Save the seed for the next time this kernel gets enqueued.
         }
 
         }
