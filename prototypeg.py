@@ -83,11 +83,11 @@ __kernel void replicate_mutate(__global struct genomes *gms, __global struct gen
                                __global uint *srt_idxs, __global float *res_g,\
                                __global struct genomes *rands) {
   int gid = get_global_id(0);
-  const uint hs[] = {"""+", ".join(hs)+"""}; //Indexes for allocate cutted population to full
+  const uint hs[] = {"""+", ".join([str(hh) for hh in hs])+"""}; //Indexes for allocate cutted population to full
   uint h = hs[gid];                           
   int i, idx = srt_idxs[h];                  //Sorted indexes of population
-  struct genome gnml = gms[idx];
-  struct genome rand = rands[idx];
+  struct genomes gnml = gms[idx];
+  struct genomes rand = rands[gid];
   float *gnma = &gnml;
   float *randa = &rand;
   float res = res_g[idx]<1.0?res_g[idx]:1.0;
@@ -124,28 +124,28 @@ numsh = np.empty(nsamp).astype(np.ushort)
 #Results buffers (as genome counts)
 res_np = np.empty(nsamp).astype(np.float32)
 res_g = cl.Buffer(ctx, mf.WRITE_ONLY, res_np.nbytes)
+res_np = np.empty(nsamp).astype(np.float32)
 ressh = np.empty(nsamp).astype(np.uint32)
-ressg = cl.Buffer(ctx, mf.WRITE_ONLY, ressh.nbytes)
-randsg = cl.Buffer(ctx, mf.WRITE_ONLY, arr_np.nbytes)
+ressg = cl.Buffer(ctx, mf.WRITE_ONLY, ressh.nbytes)     #Sorted indexes
+randsg = cl.Buffer(ctx, mf.WRITE_ONLY, arr_np.nbytes)   #Array of randoms
 randg = randfloat(ctx, nvars*nsamp)
 randg.reseed()
     
 
-for cy in range(1, 1300):
-    run.sum(queue, arr4np[0].shape, None, vsg, gms, res_g)
+for cy in range(1, 3):
+    run.sum(queue, (nsamp,), None, vsg, gms, res_g)
     print("enqueue ok")
-    res_np = np.empty(nsamp).astype(np.float32)
-    cl.enqueue_copy(queue, res_np, res_g)
+    #cl.enqueue_copy(queue, res_np, res_g)
     #Reduce sum
     clreducer.reduce_sum(queue, res_g, nsamp, o_med)
     cl.enqueue_copy(queue, obuf, o_med)
-    print("total sum is", obuf, np.sum(res_np))
+    print("total sum is", obuf)
     #Reduce minimal
     clreducer.reduce_min(queue, res_g, nsamp, o_min, o_lid)
     cl.enqueue_copy(queue, obuf, o_min)
     cl.enqueue_copy(queue, olid, o_lid)
-    print("min value is", obuf, np.min(res_np))
-    print("min index is", olid, res_np.argmin(axis=0))
+    print("min value is", obuf)
+    print("min index is", olid)
     #Reduce sort
     clreducer.sort(queue, nsamp, res_g, ressg)
     cl.enqueue_copy(queue, ressh, ressg)
@@ -154,7 +154,7 @@ for cy in range(1, 1300):
     print(len(res_np), " vs ", ressh.max() )
     #print(res_np[ressh])
     #Mutate
-    run.replicate_mutate(queue, nsamp, None, gms, tmpgms, ressg, res_g, randsg)
-    run.fillgms(queue, nsamp, None, gms, tmpgms, ressg, res_g, randsg)
+    run.replicate_mutate(queue, (nsamp,), None, gms, tmpgms, ressg, res_g, randsg)
+    run.fillgms(queue, (nsamp,), None, gms, tmpgms)
 # Check on CPU with Numpy:
 print(currmin)

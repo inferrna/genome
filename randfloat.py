@@ -10,7 +10,7 @@ class randfloat():
         self.sz = numitems
         self.queue = cl.CommandQueue(ctx)
         self.ctx = ctx
-        self.a_g =  cl.Buffer(self.ctx, mf.WRITE_only, numitems*4)
+        self.a_g =  cl.Buffer(self.ctx, mf.WRITE_ONLY, numitems*4)
         self.prg =  cl.Program(self.ctx, """
         int rand(uint* seed) // 1 <= *seed < m
         {
@@ -35,8 +35,8 @@ class randfloat():
 
         }
         """).build()
-    def randgen(o_g):
-        self.prg.rands(queue, self.sz, None, self.a_g, o_g)
-    def reseed():
+    def randgen(self, o_g):
+        self.prg.rands(self.queue, (self.sz,), None, self.a_g, o_g)
+    def reseed(self):
         self.a_np = np.random.randint(low=1, high=2147483647, size=self.sz).astype(np.uint32)
         cl.enqueue_copy(self.queue, self.a_g, self.a_np)
