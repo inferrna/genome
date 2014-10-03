@@ -27,6 +27,7 @@ result = 1.0
 ninpt = 3   #Samples count
 nvars = 9   #Count of equations members
 nsamp = ctx.get_info(cl.context_info.DEVICES)[0].max_work_group_size #Genome samples count (current sort limitation to local_size)
+clreducer = cl_reduce(ctx, nsamp)
 varnames = [dec2str(i) for i in range(0, nvars)]
 gstruct = """
 struct genomes {
@@ -51,16 +52,16 @@ print(equation)
 
 #Random init genome
 arr_np = np.random.rand(nvars*nsamp).astype(np.float32) - np.random.rand(nvars*nsamp).astype(np.float32)
-arr4np = arr_np.reshape(nvars, nsamp)
+arr4np = arr_np.reshape(nsamp, nvars)
 #Random init equation members
 inp_np = np.random.rand(nvars*ninpt).astype(np.float32) - np.random.rand(nvars*ninpt).astype(np.float32)
-inp4np = inp_np.reshape(nvars, ninpt)
+inp4np = inp_np.reshape(ninpt, nvars)
 
 
 mf = cl.mem_flags
 #Generate indices for cloning
 s = np.concatenate((np.array([0], dtype=np.uint), np.linspace(2, 7, num=nsamp//4).astype(np.uint).cumsum(),))
-hs = np.empty(nsamp, dtype=np.uint)
+hs = np.empty(nsamp, dtype=np.uint)     #Distribution of sotred indexes to new genome
 hs.fill(0)
 for x in range(0, len(s)-1):
     sx = np.arange(s[x], s[x+1]).astype(np.uint)
@@ -103,8 +104,6 @@ __kernel void fillgms(__global struct genomes *gms, __global struct genomes *tmp
 }
 """).build()
 #Metabuffer for opencl datas
-arrs_g = [[]]*3
-_arr4np = [[0]]*nvars
 global_offset = None
 g_times_l = False
 wait_for = None
@@ -114,47 +113,48 @@ olid = np.empty(1).astype(np.uint32)
 o_med = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
 o_min = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
 o_lid = cl.Buffer(ctx, mf.WRITE_ONLY, size=olid.nbytes)
-vsg = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=inp_np)
-gms = cl.Buffer(ctx, mf.WRITE_ONLY| mf.COPY_HOST_PTR, hostbuf=arr_np)
+vsg = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=inp_np) #Device array of input data
+gms = cl.Buffer(ctx, mf.WRITE_ONLY| mf.COPY_HOST_PTR, hostbuf=arr_np) #Device array of genome
 tmpgms = cl.Buffer(ctx, mf.WRITE_ONLY, arr_np.nbytes)
-clreducer = cl_reduce(ctx, nsamp)
-#Parents and grandparents
-numsg = cl_array.arange(queue, 0, nsamp, 1, dtype=np.ushort) 
-numsh = np.empty(nsamp).astype(np.ushort)
 #Results buffers (as genome counts)
-res_np = np.empty(nsamp).astype(np.float32)
-res_g = cl.Buffer(ctx, mf.WRITE_ONLY, res_np.nbytes)
-res_np = np.empty(nsamp).astype(np.float32)
-ressh = np.empty(nsamp).astype(np.uint32)
-ressg = cl.Buffer(ctx, mf.WRITE_ONLY, ressh.nbytes)     #Sorted indexes
+res_np = np.empty(nsamp).astype(np.float32)             #Host array of equation results
+res_g = cl.Buffer(ctx, mf.WRITE_ONLY, res_np.nbytes)    #Device array of equation results
+ressh = np.empty(nsamp).astype(np.uint32)               #Host array of sorted indexes
+ressg = cl.Buffer(ctx, mf.WRITE_ONLY, ressh.nbytes)     #Device array of sorted indexes
 randsg = cl.Buffer(ctx, mf.WRITE_ONLY, arr_np.nbytes)   #Array of randoms
 randg = randfloat(ctx, nvars*nsamp)
 randg.reseed()
     
 
-for cy in range(1, 3):
+for cy in range(0, 16):
     run.sum(queue, (nsamp,), None, vsg, gms, res_g)
     print("enqueue ok")
     #cl.enqueue_copy(queue, res_np, res_g)
-    #Reduce sum
-    clreducer.reduce_sum(queue, res_g, nsamp, o_med)
-    cl.enqueue_copy(queue, obuf, o_med)
-    print("total sum is", obuf)
+    ##Reduce sum
+    #clreducer.reduce_sum(queue, res_g, nsamp, o_med)
+    #cl.enqueue_copy(queue, obuf, o_med)
+    #print("total sum is", obuf)
     #Reduce minimal
     clreducer.reduce_min(queue, res_g, nsamp, o_min, o_lid)
     cl.enqueue_copy(queue, obuf, o_min)
-    cl.enqueue_copy(queue, olid, o_lid)
+    #cl.enqueue_copy(queue, olid, o_lid)
     print("min value is", obuf)
-    print("min index is", olid)
+    #print("min index is", olid)
     #Reduce sort
     clreducer.sort(queue, nsamp, res_g, ressg)
     cl.enqueue_copy(queue, ressh, ressg)
     #Generate randoms
     randg.randgen(randsg)
-    print(len(res_np), " vs ", ressh.max() )
+    #print(len(res_np), " vs ", ressh.max() )
     #print(res_np[ressh])
     #Mutate
     run.replicate_mutate(queue, (nsamp,), None, gms, tmpgms, ressg, res_g, randsg)
     run.fillgms(queue, (nsamp,), None, gms, tmpgms)
 # Check on CPU with Numpy:
 print(currmin)
+cl.enqueue_copy(queue, ressh, ressg)
+cl.enqueue_copy(queue, arr_np, gms)
+solve = arr4np[ressh[0]]
+print("\nSolve coeffs\n", solve)
+print("\nInput\n", inp4np)
+print("\nEquation solved\n", [s.sum() for s in inp4np*solve])
