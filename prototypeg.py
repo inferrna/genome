@@ -25,37 +25,18 @@ queue = cl.CommandQueue(ctx)
 
 result = 1.0
 ninpt = 3   #Samples count
-nvars = 9   #Count of equations members
+nvarsd = 9   #Count of equations members
+nvarsg = 9   #Count of equations members
 nsamp = ctx.get_info(cl.context_info.DEVICES)[0].max_work_group_size #Genome samples count (current sort limitation to local_size)
 clreducer = cl_reduce(ctx, nsamp)
-varnames = [dec2str(i) for i in range(0, nvars)]
-gstruct = """
-struct genomes {
-    """+'\n    '.join(['float '+v+';' for v in varnames])+"""
-};
-"""
-vstruct = """
-struct vars {
-    """+'\n    '.join(['float '+v+';' for v in varnames])+"""
-};
-"""
-print(gstruct)
-varsofid = ['gms[gid].'+var for var in varnames]
-valsof_i = ['vs[i].'+val for val in varnames]
-eq = ['*'.join(c) for c in zip(varsofid, valsof_i)]
-equation = '+'.join(eq)+" - "+str(result)+""
-print(varsofid)
-print(varnames)
-print(eq)
-print(equation)
 #exit()
 
 #Random init genome
-arr_np = np.random.rand(nvars*nsamp).astype(np.float32) - np.random.rand(nvars*nsamp).astype(np.float32)
-arr4np = arr_np.reshape(nsamp, nvars)
+arr_np = np.random.rand(nvarsg*nsamp).astype(np.float32) - np.random.rand(nvarsg*nsamp).astype(np.float32)
+arr4np = arr_np.reshape(nsamp, nvarsg)
 #Random init equation members
-inp_np = np.random.rand(nvars*ninpt).astype(np.float32) - np.random.rand(nvars*ninpt).astype(np.float32)
-inp4np = inp_np.reshape(ninpt, nvars)
+inp_np = np.random.rand(nvarsd*ninpt).astype(np.float32) - np.random.rand(nvarsd*ninpt).astype(np.float32)
+inp4np = inp_np.reshape(ninpt, nvarsd)
 
 
 mf = cl.mem_flags
@@ -68,39 +49,49 @@ for x in range(0, len(s)-1):
     for sxi in sx:
         if sxi<len(s): hs[sxi] = x
 run = cl.Program(ctx, 
-"#define nvars "+str(nvars)+"\n"+
-'\n'.join([gstruct, vstruct])+"""
-__kernel void sum(__global struct vars *vs, __global struct genomes *gms, __global float *res_g) {
-  int gid = get_global_id(0);
-  float _res = 0.0;
-  for(int i=0; i<"""+str(ninpt)+"""; i++){
-    _res += fabs("""+equation+""");
-    //_res += """+equation+""";
+"#define nvarsd "+str(nvarsd)+"\n"+
+"#define nvarsg "+str(nvarsg)+"\n"+
+"#define ninpt "+str(ninpt)+"\n"+
+"""__kernel void sum(__global float *_vs, __global float *_gms, __global float *res_g) {
+  uint gid = get_global_id(0);
+  __global float *gms = _gms + gid*nvarsg;
+  __global float *vs = _vs;
+  float rsi = 0.0, _res = 0.0;
+  for(uint i=0; i<ninpt; i++){
+    vs += i*nvarsd;
+    rsi = 0.0;
+    for(uint j=0; j<nvarsd; j++){
+        rsi += vs[j]*gms[j];
+    }
+    _res += fabs(rsi-1.0);
   }
   res_g[gid] = _res;
 }
 
-__kernel void replicate_mutate(__global struct genomes *gms, __global struct genomes *tmpgms,\
+__kernel void replicate_mutate(__global float *_gms, __global float *_tmpgms,\
                                __global uint *srt_idxs, __global float *res_g,\
-                               __global struct genomes *rands) {
+                               __global float *_rnd) {
   int gid = get_global_id(0);
   const uint hs[] = {"""+", ".join([str(hh) for hh in hs])+"""}; //Indexes for allocate cutted population to full
   uint h = hs[gid];                           
-  int i, idx = srt_idxs[h];                  //Sorted indexes of population
-  struct genomes gnml = gms[idx];
-  struct genomes rand = rands[gid];
-  float *gnma = &gnml;
-  float *randa = &rand;
+  uint i, idx = srt_idxs[h];                  //Sorted indexes of population
+  __global float *gms = _gms + idx*nvarsg;
+  __global float *rnd = _rnd + gid*nvarsg;
+  __global float *tmpgms = _tmpgms + gid*nvarsg;
+  //float gml[nvarsg];
   float res = res_g[idx]<1.0?res_g[idx]:1.0;
-  for(i=0; i<nvars; i++)
-      gnma[i] = gnma[i]+randa[i]*res;
-  tmpgms[gid] = gnml;
+  for(i=0; i<nvarsg; i++)
+      tmpgms[i] = gms[i]+rnd[i]*res;
 
 }
 
-__kernel void fillgms(__global struct genomes *gms, __global struct genomes *tmpgms) {
+__kernel void fillgms(__global float *_gms, __global float *_tmpgms) {
   int gid = get_global_id(0);
+  __global float *gms = _gms + gid*nvarsg;
+  __global float *tmpgms = _tmpgms + gid*nvarsg;
   gms[gid] = tmpgms[gid];
+  for(uint i=0; i<nvarsg; i++)
+      gms[i] = tmpgms[i];
 }
 """).build()
 #Metabuffer for opencl datas
@@ -114,22 +105,23 @@ o_med = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
 o_min = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
 o_lid = cl.Buffer(ctx, mf.WRITE_ONLY, size=olid.nbytes)
 vsg = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=inp_np) #Device array of input data
-gms = cl.Buffer(ctx, mf.WRITE_ONLY| mf.COPY_HOST_PTR, hostbuf=arr_np) #Device array of genome
-tmpgms = cl.Buffer(ctx, mf.WRITE_ONLY, arr_np.nbytes)
+gms = cl.Buffer(ctx, mf.READ_WRITE| mf.COPY_HOST_PTR, hostbuf=arr_np) #Device array of genome
+tmpgms = cl.Buffer(ctx, mf.READ_WRITE, arr_np.nbytes)
 #Results buffers (as genome counts)
 res_np = np.empty(nsamp).astype(np.float32)             #Host array of equation results
-res_g = cl.Buffer(ctx, mf.WRITE_ONLY, res_np.nbytes)    #Device array of equation results
+res_g = cl.Buffer(ctx, mf.READ_WRITE, res_np.nbytes)    #Device array of equation results
 ressh = np.empty(nsamp).astype(np.uint32)               #Host array of sorted indexes
-ressg = cl.Buffer(ctx, mf.WRITE_ONLY, ressh.nbytes)     #Device array of sorted indexes
-randsg = cl.Buffer(ctx, mf.WRITE_ONLY, arr_np.nbytes)   #Array of randoms
-randg = randfloat(ctx, nvars*nsamp)
+ressg = cl.Buffer(ctx, mf.READ_WRITE, ressh.nbytes)     #Device array of sorted indexes
+randsg = cl.Buffer(ctx, mf.READ_WRITE, arr_np.nbytes)   #Array of randoms
+randg = randfloat(ctx, nvarsg*nsamp)
 randg.reseed()
     
 
-for cy in range(0, 16):
+for cy in range(0, 16000):
     run.sum(queue, (nsamp,), None, vsg, gms, res_g)
     print("enqueue ok")
     #cl.enqueue_copy(queue, res_np, res_g)
+    #print("Result is", res_np)
     ##Reduce sum
     #clreducer.reduce_sum(queue, res_g, nsamp, o_med)
     #cl.enqueue_copy(queue, obuf, o_med)
@@ -139,6 +131,7 @@ for cy in range(0, 16):
     cl.enqueue_copy(queue, obuf, o_min)
     #cl.enqueue_copy(queue, olid, o_lid)
     print("min value is", obuf)
+    if obuf[0]<0.000001: break
     #print("min index is", olid)
     #Reduce sort
     clreducer.sort(queue, nsamp, res_g, ressg)
