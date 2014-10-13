@@ -24,7 +24,7 @@ ctx = cl.create_some_context()
 queue = cl.CommandQueue(ctx)
 
 result = 1.0
-ninpt = 3   #Samples count
+ninpt = 5   #Samples count
 nvarsd = 9   #Count of equations members
 nvarsg = 9   #Count of equations members
 nsamp = ctx.get_info(cl.context_info.DEVICES)[0].max_work_group_size #Genome samples count (current sort limitation to local_size)
@@ -118,9 +118,9 @@ randg = randfloat(ctx, nvarsg*nsamp)
 randg.reseed()
     
 
-for cy in range(0, 64):
+for cy in range(0, 6400):
     run.sum(queue, (nsamp,), None, vsg, gms, res_g)
-    print("enqueue ok")
+    #print("enqueue ok")
     #cl.enqueue_copy(queue, res_np, res_g)
     #print("Result is", res_np)
     ##Reduce sum
@@ -128,15 +128,18 @@ for cy in range(0, 64):
     #cl.enqueue_copy(queue, obuf, o_med)
     #print("total sum is", obuf)
     #Reduce minimal
-    clreducer.reduce_min(queue, res_g, nsamp, o_min, o_lid)
-    cl.enqueue_copy(queue, obuf, o_min)
+    if cy%8==0:
+        clreducer.reduce_min(queue, res_g, nsamp, o_min, o_lid)
+        cl.enqueue_copy(queue, obuf, o_min)
+        print("min value is", obuf)
+    if cy%512==0:
+        randg.reseed()
+    if obuf[0]<0.000001: break
     #cl.enqueue_copy(queue, olid, o_lid)
-    print("min value is", obuf)
     #print("min index is", olid)
     #Reduce sort
     clreducer.sort(queue, nsamp, res_g, ressg)
     #cl.enqueue_copy(queue, ressh, ressg)
-    if obuf[0]<0.000001: break
     #Generate randoms
     randg.randgen(randsg)
     #print(len(res_np), " vs ", ressh.max() )
