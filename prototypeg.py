@@ -53,17 +53,18 @@ run = cl.Program(ctx,
 "#define nvarsg "+str(nvarsg)+"\n"+
 "#define ninpt "+str(ninpt)+"\n"+
 """__kernel void sum(__global float *_vs, __global float *_gms, __global float *res_g) {
-  uint gid = get_global_id(0);
+  uint i, j, gid = get_global_id(0);
   __global float *gms = _gms + gid*nvarsg;
   __global float *vs = _vs;
   float rsi = 0.0, _res = 0.0;
-  for(uint i=0; i<ninpt; i++){
-    vs += i*nvarsd;
+  for(i=0; i<ninpt; i++){
     rsi = 0.0;
-    for(uint j=0; j<nvarsd; j++){
+    for(j=0; j<nvarsd; j++){
         rsi += vs[j]*gms[j];
     }
+    vs += nvarsd;
     _res += fabs(rsi-1.0);
+    //_res = gms[j-1];
   }
   res_g[gid] = _res;
 }
@@ -71,7 +72,7 @@ run = cl.Program(ctx,
 __kernel void replicate_mutate(__global float *_gms, __global float *_tmpgms,\
                                __global uint *srt_idxs, __global float *res_g,\
                                __global float *_rnd) {
-  int gid = get_global_id(0);
+  uint gid = get_global_id(0);
   const uint hs[] = {"""+", ".join([str(hh) for hh in hs])+"""}; //Indexes for allocate cutted population to full
   uint h = hs[gid];                           
   uint i, idx = srt_idxs[h];                  //Sorted indexes of population
@@ -86,7 +87,7 @@ __kernel void replicate_mutate(__global float *_gms, __global float *_tmpgms,\
 }
 
 __kernel void fillgms(__global float *_gms, __global float *_tmpgms) {
-  int gid = get_global_id(0);
+  uint gid = get_global_id(0);
   __global float *gms = _gms + gid*nvarsg;
   __global float *tmpgms = _tmpgms + gid*nvarsg;
   gms[gid] = tmpgms[gid];
@@ -117,7 +118,7 @@ randg = randfloat(ctx, nvarsg*nsamp)
 randg.reseed()
     
 
-for cy in range(0, 16000):
+for cy in range(0, 64):
     run.sum(queue, (nsamp,), None, vsg, gms, res_g)
     print("enqueue ok")
     #cl.enqueue_copy(queue, res_np, res_g)
@@ -131,11 +132,11 @@ for cy in range(0, 16000):
     cl.enqueue_copy(queue, obuf, o_min)
     #cl.enqueue_copy(queue, olid, o_lid)
     print("min value is", obuf)
-    if obuf[0]<0.000001: break
     #print("min index is", olid)
     #Reduce sort
     clreducer.sort(queue, nsamp, res_g, ressg)
-    cl.enqueue_copy(queue, ressh, ressg)
+    #cl.enqueue_copy(queue, ressh, ressg)
+    if obuf[0]<0.000001: break
     #Generate randoms
     randg.randgen(randsg)
     #print(len(res_np), " vs ", ressh.max() )
