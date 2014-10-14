@@ -10,6 +10,7 @@ class randfloat():
         self.sz = numitems
         self.queue = cl.CommandQueue(ctx)
         self.ctx = ctx
+        print("num of random items is ", numitems)
         self.a_g =  cl.Buffer(self.ctx, mf.WRITE_ONLY, numitems*4)
         self.prg =  cl.Program(self.ctx, """
         int rand(uint* seed) // 1 <= *seed < m

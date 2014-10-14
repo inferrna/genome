@@ -10,6 +10,7 @@ import random
 from string import ascii_lowercase
 from reducecl import cl_reduce
 from randfloat import randfloat
+import genn
 
 def dec2str(num):
     k = []
@@ -26,8 +27,11 @@ queue = cl.CommandQueue(ctx)
 result = 1.0
 ninpt = 5   #Samples count
 nvarsd = 9   #Count of equations members
-nvarsg = 9   #Count of equations members
+topology = [nvarsd, 3, 1]
+nvarsg = genn.countcns(topology)   #Count of equations members
+print("Total connections is", nvarsg)
 nsamp = ctx.get_info(cl.context_info.DEVICES)[0].max_work_group_size #Genome samples count (current sort limitation to local_size)
+print("Population count is", nsamp)
 clreducer = cl_reduce(ctx, nsamp)
 #exit()
 
@@ -37,7 +41,8 @@ arr4np = arr_np.reshape(nsamp, nvarsg)
 #Random init equation members
 inp_np = np.random.rand(nvarsd*ninpt).astype(np.float32) - np.random.rand(nvarsd*ninpt).astype(np.float32)
 inp4np = inp_np.reshape(ninpt, nvarsd)
-
+#Results
+vsr = np.array([1.0]*ninpt, dtype=np.float32)
 
 mf = cl.mem_flags
 #Generate indices for cloning
@@ -48,27 +53,16 @@ for x in range(0, len(s)-1):
     sx = np.arange(s[x], s[x+1]).astype(np.uint)
     for sxi in sx:
         if sxi<len(s): hs[sxi] = x
-run = cl.Program(ctx, 
-"#define nvarsd "+str(nvarsd)+"\n"+
-"#define nvarsg "+str(nvarsg)+"\n"+
-"#define ninpt "+str(ninpt)+"\n"+
-"""__kernel void sum(__global float *_vs, __global float *_gms, __global float *res_g) {
-  uint i, j, gid = get_global_id(0);
-  __global float *gms = _gms + gid*nvarsg;
-  __global float *vs = _vs;
-  float rsi = 0.0, _res = 0.0;
-  for(i=0; i<ninpt; i++){
-    rsi = 0.0;
-    for(j=0; j<nvarsd; j++){
-        rsi += vs[j]*gms[j];
-    }
-    vs += nvarsd;
-    _res += fabs(rsi-1.0);
-    //_res = gms[j-1];
-  }
-  res_g[gid] = _res;
-}
 
+defines = \
+"#define nvarsd "+str(nvarsd)+"\n"+\
+"#define nvarsg "+str(nvarsg)+"\n"+\
+"#define ninpt "+str(ninpt)+"\n\n"
+print(genn.genkern(ninpt, topology))
+print(genn.oldkernel)
+
+run = cl.Program(ctx, defines+genn.genkern(ninpt, topology)+"\n"+\
+"""
 __kernel void replicate_mutate(__global float *_gms, __global float *_tmpgms,\
                                __global uint *srt_idxs, __global float *res_g,\
                                __global float *_rnd) {
@@ -106,6 +100,7 @@ o_med = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
 o_min = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
 o_lid = cl.Buffer(ctx, mf.WRITE_ONLY, size=olid.nbytes)
 vsg = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=inp_np) #Device array of input data
+vsrg = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=vsr)   #Device array of outpus data
 gms = cl.Buffer(ctx, mf.READ_WRITE| mf.COPY_HOST_PTR, hostbuf=arr_np) #Device array of genome
 tmpgms = cl.Buffer(ctx, mf.READ_WRITE, arr_np.nbytes)
 #Results buffers (as genome counts)
@@ -119,7 +114,7 @@ randg.reseed()
     
 
 for cy in range(0, 6400):
-    run.sum(queue, (nsamp,), None, vsg, gms, res_g)
+    run.runnet(queue, (nsamp,), None, vsg, gms, vsrg, res_g)
     #print("enqueue ok")
     #cl.enqueue_copy(queue, res_np, res_g)
     #print("Result is", res_np)
