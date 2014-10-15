@@ -27,7 +27,7 @@ queue = cl.CommandQueue(ctx)
 result = 1.0
 ninpt = 5   #Samples count
 nvarsd = 9   #Count of equations members
-topology = [nvarsd, 3, 1]
+topology = [nvarsd, 5, 3, 1]
 nvarsg = genn.countcns(topology)   #Count of equations members
 print("Total connections is", nvarsg)
 nsamp = ctx.get_info(cl.context_info.DEVICES)[0].max_work_group_size #Genome samples count (current sort limitation to local_size)
@@ -113,7 +113,7 @@ randg = randfloat(ctx, nvarsg*nsamp)
 randg.reseed()
     
 
-for cy in range(0, 6400):
+for cy in range(0, 64000):
     run.runnet(queue, (nsamp,), None, vsg, gms, vsrg, res_g)
     #print("enqueue ok")
     #cl.enqueue_copy(queue, res_np, res_g)
