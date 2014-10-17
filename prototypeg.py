@@ -177,7 +177,7 @@ for cy in range(1, 640000):
 #__global float *_gms, __global float *_gm, __global float *res_g, __global float *bestres, __global uint *srt_idxs)
     #cl.enqueue_copy(queue, ressh, ressg)
     #Generate randoms
-    randg.randgen(randsg)
+    randg.randgen(randsg, int(topconns[k]), ptcshifts[k])
     #print(len(res_np), " vs ", ressh.max() )
     #print(res_np[ressh])
     #Mutate
