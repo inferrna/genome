@@ -58,9 +58,9 @@ defines = \
 "#define nvarsd "+str(nvarsd)+"\n"+\
 "#define nvarsg "+str(nvarsg)+"\n"+\
 "#define ninpt "+str(ninpt)+"\n\n"
-print(genn.genkern(ninpt, topology))
+print(genn.genkern2(ninpt, topology))
 print(genn.oldkernel)
-
+exit()
 run = cl.Program(ctx, defines+genn.genkern(ninpt, topology)+"\n"+\
 """
 __kernel void replicate_mutate(__global float *_gms, __global float *_tmpgms,\
