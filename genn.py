@@ -1,4 +1,5 @@
 import numpy as np
+import copy
 
 oldkernel = \
 """
@@ -109,17 +110,25 @@ def genkern2(samples, topology):
     n = 0
 #nextner += a[n]
 #s.append(dm*"\t"+"sums[{1}][{0}]+=xxx;".format(counters[dm], dm-1))
-    s = []
+    ss = []
+    ses = []
     for n in range(0, len(a)-1):
-        s.append("define n_sam "+str(a[n])+
-                 "\n__kernel void runnet(__global float *_gneurons, __global float *ggconns, __global float *gtargets, __global float *results){")
-        s.append(dm*"\t"+"float dnr[{0}];".format(a[n]))#+"{"+", ".join(a[1]*["0.0"])+"};")
-        s.append(dm*"\t"+"float lnr[{0}];".format(a[n]))#+"{"+", ".join(a[1]*["0.0"])+"};")
+        s = []
+        ss.append("define n_sam "+str(a[n])+
+                 "\n__kernel void runnet"+str(n)+"(__global float *_gneurons, __global float *ggconns, __global float *_"+\
+                 lneurons[(n+1)%2]+", __global float *gtargets, __global float *results){")
+        ses.append("define n_sam "+str(a[n])+
+                 "\n__kernel void runnete"+str(n)+"(__global float *_gneurons, __global float *ggconns, __global float *_"+\
+                 lneurons[(n+1)%2]+", __global float *gtargets, __global float *results){")
+        s.append(dm*"\t"+"float dnr[{0}];".format(a[n]))
+        s.append(dm*"\t"+"float lnr[{0}];".format(a[n]))
+        s.append(dm*"\t"+"for(uint {0}=0; {0}<{1}; {0}++)".format(counters[dm], str(a[n])))
+        s.append((dm+1)*"\t"+"{0}[{1}] = _{0}[{1}];".format(lneurons[(n+1)%2], counters[dm]))
         s.append(dm*"\t"+"float result = 0.0;")
         s.append(dm*"\t"+"uint gid = get_global_id(0);")
         s.append(dm*"\t"+"__global float *gconns = ggconns+{1}+{0}*gid;".format(conns[n], sconns[n]))
         s.append((dm)*"\t"+"__global float gneurons = _gneurons+{0};".format(neuronss[n])) #"Samples" loop
-        dm+=1
+        #dm+=1
         currcon += a[n]*a[n+1]
         nextner += a[n]
         for m in range(n, len(a)-1):
@@ -133,17 +142,25 @@ def genkern2(samples, topology):
             s.append((dm+2)*"\t"+"{5}[{1}] += {6}[{3}]*gconns[{3}*{4}+{1}]".format(\
                                                                                            nextner, nrcnt,\
                                                                                            currner, counters[dm],\
-                                                                                           str(a[m+1]), lneurons[n%2],\
+                                                                                           str(a[m+1]), lneurons[m%2],\
                                                                                            lneurons[(m+1)%2])+";")
             if(a[n+1]>1):
                 s.append((dm+1)*"\t"+"}") #"Connections" loop
             s.append((dm+1)*"\t"+"{0}[{1}] = 0.0;".format(lneurons[(m+1)%2], counters[dm]))
-        s.append(dm*"\t"+"}") #"Neurons" loop
+            s.append(dm*"\t"+"}") #"Neurons" loop
+            if m==n:
+                se = copy.copy(s)
+                se.append((dm)*"\t"+"for(uint {0}=0; {0}<{1}; {0}++)".format(counters[dm], str(a[n+1])))
+                se.append((dm+1)*"\t"+"_{0}[{1}] = {0}[{1}];".format(lneurons[(n+1)%2], counters[dm]))
+                se.append(dm*"\t"+"}") #"Neurons" loop
+                se.append("}") #"Neurons" loop
         currcon += a[n]*a[n+1]
         currner += a[n]
         #dm+=1
         s.append((dm)*"\t"+"result += fabs(gtargets[{0}] - {1}[0]);".format("n_sam", lneurons[n%2])) #"Samples" loop
         s.append((dm)*"\t"+"{0}[0] = 0.0;".format(lneurons[n%2])) #"Samples" loop
-        s.append((dm-1)*"\t"+"results[gid] = result;\n}") #Kernel end
-    return "\n".join(s)
+        s.append((dm)*"\t"+"results[gid] = result;\n}") #Kernel end
+        ss = ss+s
+        ses = ses+se
+    return "\n".join(ss+ses)
 
