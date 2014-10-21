@@ -114,16 +114,15 @@ def genkern2(samples, topology):
     ses = []
     for n in range(0, len(a)-1):
         s = []
-        ss.append("define n_sam "+str(a[n])+
-                 "\n__kernel void runnet"+str(n)+"(__global float *_gneurons, __global float *ggconns, __global float *_"+\
+        ss.append("__kernel void runnet"+str(n)+"(__global float *_gneurons, __global float *ggconns, __global float *_"+\
                  lneurons[(n+1)%2]+", __global float *gtargets, __global float *results){")
-        ses.append("define n_sam "+str(a[n])+
-                 "\n__kernel void runnete"+str(n)+"(__global float *_gneurons, __global float *ggconns, __global float *_"+\
+        ses.append("__kernel void runnete"+str(n)+"(__global float *_gneurons, __global float *ggconns, __global float *_"+\
                  lneurons[(n+1)%2]+", __global float *gtargets, __global float *results){")
         s.append(dm*"\t"+"float dnr[{0}];".format(a[n]))
         s.append(dm*"\t"+"float lnr[{0}];".format(a[n]))
+        s.append(dm*"\t"+"__global float *g{0} = _{0}+{1}*gid;".format(lneurons[(n+1)%2], str(a[n])))
         s.append(dm*"\t"+"for(uint {0}=0; {0}<{1}; {0}++)".format(counters[dm], str(a[n])))
-        s.append((dm+1)*"\t"+"{0}[{1}] = _{0}[{1}];".format(lneurons[(n+1)%2], counters[dm]))
+        s.append((dm+1)*"\t"+"{0}[{1}] = g{0}[{1}];".format(lneurons[(n+1)%2], counters[dm]))
         s.append(dm*"\t"+"float result = 0.0;")
         s.append(dm*"\t"+"uint gid = get_global_id(0);")
         s.append(dm*"\t"+"__global float *gconns = ggconns+{1}+{0}*gid;".format(conns[n], sconns[n]))
@@ -150,8 +149,9 @@ def genkern2(samples, topology):
             s.append(dm*"\t"+"}") #"Neurons" loop
             if m==n:
                 se = copy.copy(s)
+                se.append(dm*"\t"+"g{0} = _{0}+{1}*gid;".format(lneurons[(n+1)%2], str(a[n+1])))
                 se.append((dm)*"\t"+"for(uint {0}=0; {0}<{1}; {0}++)".format(counters[dm], str(a[n+1])))
-                se.append((dm+1)*"\t"+"_{0}[{1}] = {0}[{1}];".format(lneurons[(n+1)%2], counters[dm]))
+                se.append((dm+1)*"\t"+"g{0}[{1}] = {0}[{1}];".format(lneurons[(n+1)%2], counters[dm]))
                 se.append(dm*"\t"+"}") #"Neurons" loop
                 se.append("}") #"Neurons" loop
         currcon += a[n]*a[n+1]
