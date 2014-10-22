@@ -91,7 +91,7 @@ def genkern(samples, topology):
     return "\n".join(s)
 
 
-def genkern2(samples, topology):
+def genkern2(samples, topology, cmpfunc):
     dm = 1
     counters = "ijkzhiuy"
     sums = "abcdef"
@@ -112,17 +112,15 @@ def genkern2(samples, topology):
 #s.append(dm*"\t"+"sums[{1}][{0}]+=xxx;".format(counters[dm], dm-1))
     ss = []
     ses = []
+    #shiftsg = [0]+len(a)*[a[0]*samples]
     for n in range(0, len(a)-1):
         s = []
-        ss.append("__kernel void runnet"+str(n)+"(__global float *_gneurons, __global float *ggconns, __global float *_"+\
-                 lneurons[(n+1)%2]+", __global float *gtargets, __global float *results){")
-        ses.append("__kernel void runnete"+str(n)+"(__global float *_gneurons, __global float *ggconns, __global float *_"+\
+        kname = "runnet"
+        s.append("__kernel void "+kname+"(__global float *ggconns, __global float *_"+\
                  lneurons[(n+1)%2]+", __global float *gtargets, __global float *results){")
         s.append(dm*"\t"+"float dnr[{0}];".format(a[n]))
         s.append(dm*"\t"+"float lnr[{0}];".format(a[n]))
-        s.append(dm*"\t"+"__global float *g{0} = _{0}+{1}*gid;".format(lneurons[(n+1)%2], str(a[n])))
-        s.append(dm*"\t"+"for(uint {0}=0; {0}<{1}; {0}++)".format(counters[dm], str(a[n])))
-        s.append((dm+1)*"\t"+"{0}[{1}] = g{0}[{1}];".format(lneurons[(n+1)%2], counters[dm]))
+        s.append(dm*"\t"+"__global float *g{0} = _{0}+{1}*gid;".format(lneurons[(n+1)%2], a[0]*samples))
         s.append(dm*"\t"+"float result = 0.0;")
         s.append(dm*"\t"+"uint gid = get_global_id(0);")
         s.append(dm*"\t"+"__global float *gconns = ggconns+{1}+{0}*gid;".format(conns[n], sconns[n]))
@@ -130,6 +128,10 @@ def genkern2(samples, topology):
         #dm+=1
         currcon += a[n]*a[n+1]
         nextner += a[n]
+        s.append(dm*"\t"+"for(uint {0}=0; {0}<{1}; {0}++)".format(counters[dm], str(samples))+"{ //\"Samples\" loop "+str(n)) #"Samples" loop
+        dm+=1
+        s.append(dm*"\t"+"for(uint {0}=0; {0}<{1}; {0}++)".format(counters[dm], str(a[n])))
+        s.append((dm+1)*"\t"+"{0}[{1}] = g{0}[{1}];".format(lneurons[(n+1)%2], counters[dm]))
         for m in range(n, len(a)-1):
             s.append(dm*"\t"+"for(uint {0}=0; {0}<{1}; {0}++)".format(counters[dm], str(a[m]))+"{ //\"Neurons\" loop "+str(m)) #"Neurons" loop
             if(a[n+1]>1):
@@ -149,18 +151,24 @@ def genkern2(samples, topology):
             s.append(dm*"\t"+"}") #"Neurons" loop
             if m==n:
                 se = copy.copy(s)
-                se.append(dm*"\t"+"g{0} = _{0}+{1}*gid;".format(lneurons[(n+1)%2], str(a[n+1])))
                 se.append((dm)*"\t"+"for(uint {0}=0; {0}<{1}; {0}++)".format(counters[dm], str(a[n+1])))
-                se.append((dm+1)*"\t"+"g{0}[{1}] = {0}[{1}];".format(lneurons[(n+1)%2], counters[dm]))
-                se.append(dm*"\t"+"}") #"Neurons" loop
-                se.append("}") #"Neurons" loop
+                se.append((dm+1)*"\t"+"g{0}[{1}] = {2}[{1}];".format(lneurons[(m+1)%2], counters[dm], lneurons[(m)%2]))
+                se.append(dm*"\t"+"g{0} += {1};".format(lneurons[(m+1)%2], a[0]))
+                se.append((dm-1)*"\t"+"}//\"Samples\" loop "+str(n))
+                se.append("}") #"Kernel" end
         currcon += a[n]*a[n+1]
         currner += a[n]
         #dm+=1
-        s.append((dm)*"\t"+"result += fabs(gtargets[{0}] - {1}[0]);".format("n_sam", lneurons[n%2])) #"Samples" loop
-        s.append((dm)*"\t"+"{0}[0] = 0.0;".format(lneurons[n%2])) #"Samples" loop
+        s.append(dm*"\t"+"g{0} += {1};".format(lneurons[(n+1)%2], a[0]))
+        s.append((dm)*"\t"+"result += fabs(gtargets[{0}] - {1}[0]);".format(counters[dm-1], lneurons[n%2])) #"Samples" loop
+        #s.append((dm)*"\t"+"{0}[0] = 0.0;".format(lneurons[n%2])) #"Samples" loop
+        dm-=1
+        s.append((dm)*"\t"+"}//\"Samples\" loop "+str(n))
         s.append((dm)*"\t"+"results[gid] = result;\n}") #Kernel end
-        ss = ss+s
-        ses = ses+se
-    return "\n".join(ss+ses)
+        ss.append(cmpfunc("\n".join(s)))
+        ses.append(cmpfunc("\n".join(se)))
+        if n==0:
+            print("\n".join(s))
+            print("\n".join(se))
+    return {"ordinal":ss, "finish":ses}
 

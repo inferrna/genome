@@ -11,6 +11,8 @@ from string import ascii_lowercase
 from reducecl import cl_reduce
 from randfloat import randfloat
 import genn
+import pprint
+pp = pprint.PrettyPrinter(depth=5)
 
 def dec2str(num):
     k = []
@@ -58,11 +60,16 @@ defines = \
 "#define nvarsd "+str(nvarsd)+"\n"+\
 "#define nvarsg "+str(nvarsg)+"\n"+\
 "#define ninpt "+str(ninpt)+"\n\n"
-print(genn.genkern2(ninpt, topology))
+pp.pprint(genn.genkern2(ninpt, topology, lambda x: cl.Program(ctx, x)))
 print(genn.oldkernel)
 exit()
 run = cl.Program(ctx, defines+genn.genkern(ninpt, topology)+"\n"+\
 """
+__kernel void copy_inp(__global float *inpt, __global float *dnr){
+    uint gid = get_global_id(0);
+    dnr[gid] = inpt[gid%"""+str(ninpt*nvarsd)+"""];
+}
+
 __kernel void replicate_mutate(__global float *_gms, __global float *_tmpgms,\
                                __global uint *srt_idxs, __global float *res_g,\
                                __global float *_rnd, __global uint *_nvarsg) {
@@ -147,6 +154,7 @@ randg = randfloat(ctx, nvarsg*nsamp)
 randg.reseed()
     
 
+#run.copy_inp(queue, (nsamp*nvarsd*nsamp,), None, vsg, 
 
 for cy in range(1, 640000):
     run.runnet(queue, (nsamp,), None, vsg, gms, vsrg, res_g)
