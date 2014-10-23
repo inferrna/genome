@@ -60,14 +60,14 @@ defines = \
 "#define nvarsd "+str(nvarsd)+"\n"+\
 "#define nvarsg "+str(nvarsg)+"\n"+\
 "#define ninpt "+str(ninpt)+"\n\n"
-pp.pprint(genn.genkern2(ninpt, topology, lambda x: cl.Program(ctx, x)))
-print(genn.oldkernel)
-exit()
+kernels = genn.genkern2(ninpt, topology, lambda x: cl.Program(ctx, x).build())
+print(kernels)
+#exit()
 run = cl.Program(ctx, defines+genn.genkern(ninpt, topology)+"\n"+\
 """
 __kernel void copy_inp(__global float *inpt, __global float *dnr){
     uint gid = get_global_id(0);
-    dnr[gid] = inpt[gid%"""+str(ninpt*nvarsd)+"""];
+    dnr[gid] = inpt[gid];
 }
 
 __kernel void replicate_mutate(__global float *_gms, __global float *_tmpgms,\
@@ -140,7 +140,8 @@ o_min = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
 o_lid = cl.Buffer(ctx, mf.WRITE_ONLY, size=olid.nbytes)
 gmbg = cl.Buffer(ctx, mf.READ_WRITE, size=nvarsg*obuf.nbytes)
 brsg = cl.Buffer(ctx, mf.READ_WRITE, size=obuf.nbytes)
-vsg = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=inp_np) #Device array of input data
+vsg = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=inp_np)   #Device array of input data
+dnrg = cl.Buffer(ctx, mf.READ_WRITE, size=inp_np.nbytes) #Device array of input data
 vsrg = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=vsr)   #Device array of outpus data
 gms = cl.Buffer(ctx, mf.READ_WRITE| mf.COPY_HOST_PTR, hostbuf=arr_np) #Device array of genome
 tmpgms = cl.Buffer(ctx, mf.READ_WRITE, arr_np.nbytes)
@@ -153,36 +154,32 @@ randsg = cl.Buffer(ctx, mf.READ_WRITE, arr_np.nbytes)   #Array of randoms
 randg = randfloat(ctx, nvarsg*nsamp)
 randg.reseed()
     
+dbg = True
 
-#run.copy_inp(queue, (nsamp*nvarsd*nsamp,), None, vsg, 
-
-for cy in range(1, 640000):
-    run.runnet(queue, (nsamp,), None, vsg, gms, vsrg, res_g)
-    #print("enqueue ok")
-    #cl.enqueue_copy(queue, res_np, res_g)
-    #print("Result is", res_np)
-    ##Reduce sum
-    #clreducer.reduce_sum(queue, res_g, nsamp, o_med)
-    #cl.enqueue_copy(queue, obuf, o_med)
-    #print("total sum is", obuf)
-    #Reduce minimal
-    clreducer.sort(queue, nsamp, res_g, ressg)
+for cy in range(1, 33):
     if cy%8==0:
         clreducer.reduce_min(queue, res_g, nsamp, o_min, o_lid)
         cl.enqueue_copy(queue, obuf, o_min)
-        _k+=1
-        k = k%lt; 
-        print("min value is", obuf)
+        if dbg: queue.finish()
+        print("min value is", obuf,". Load best")
         run.loadbest(queue, (1,), None, gms, gmbg, res_g, brsg, ressg)
+        if dbg: queue.finish()
+        if dbg: print("Finish")
+        kernels["finish"][k].runnet(queue, (ninpt,), None, gms, dnrg, vsrg, res_g)
+        if dbg: queue.finish()
+        _k+=1
+        k = _k%lt; 
     else:
         run.savebest(queue, (1,), None, gms, gmbg, res_g, brsg, ressg)
     if cy%512==0:
         randg.reseed()
     if obuf[0]<0.000001: break
+    if k==0: run.copy_inp(queue, (nvarsd*ninpt,), None, vsg, dnrg)
+    kernels["ordinal"][k].runnet(queue, (nsamp,), None, gms, dnrg, vsrg, res_g)
+    clreducer.sort(queue, nsamp, res_g, ressg)
     #cl.enqueue_copy(queue, olid, o_lid)
     #print("min index is", olid)
     #Reduce sort
-#__global float *_gms, __global float *_gm, __global float *res_g, __global float *bestres, __global uint *srt_idxs)
     #cl.enqueue_copy(queue, ressh, ressg)
     #Generate randoms
     randg.randgen(randsg, int(topconns[k]), ptcshifts[k])
