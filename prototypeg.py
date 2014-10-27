@@ -166,7 +166,9 @@ for cy in range(1, 33):
         if dbg: queue.finish()
         if dbg: print("Finish")
         kernels["finish"][k].runnet(queue, (ninpt,), None, gms, dnrg, vsrg, res_g)
-        if dbg: queue.finish()
+        if dbg: 
+            queue.finish()
+            exit()
         _k+=1
         k = _k%lt; 
     else:
