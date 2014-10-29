@@ -72,14 +72,14 @@ __kernel void copy_inp(__global float *inpt, __global float *dnr){
 
 __kernel void replicate_mutate(__global float *_gms, __global float *_tmpgms,\
                                __global uint *srt_idxs, __global float *res_g,\
-                               __global float *_rnd, __global uint *_nvarsg) {
+                               __global float *_rnd, __global uint *_nvarsg, __global uint *_shiftsg) {
   uint gid = get_global_id(0);
   const uint hs[] = {"""+", ".join([str(hh) for hh in hs])+"""}; //Indexes for allocate cutted population to full
   uint h = hs[gid];                           
   uint i, idx = srt_idxs[h];                  //Sorted indexes of population
-  __global float *gms = _gms + idx*nvarsg;
-  __global float *rnd = _rnd + gid*nvarsg;
-  __global float *tmpgms = _tmpgms + gid*nvarsg;
+  __global float *gms = _gms + idx*nvarsg+_shiftsg[0];
+  __global float *rnd = _rnd + gid*nvarsg+_shiftsg[0];
+  __global float *tmpgms = _tmpgms + gid*nvarsg;//+_shiftsg[0];
   //float gml[nvarsg];
   float res = res_g[idx]/100.0;//<0.01?res_g[idx]:0.01;
   for(i=0; i<_nvarsg[0]; i++)
@@ -109,10 +109,10 @@ __kernel void loadbest(__global float *_gms, __global float *_gm, __global float
     }
 }
 
-__kernel void fillgms(__global float *_gms, __global float *_tmpgms, __global uint *_nvarsg) {
+__kernel void fillgms(__global float *_gms, __global float *_tmpgms, __global uint *_nvarsg, __global uint *_shiftsg) {
   uint gid = get_global_id(0);
-  __global float *gms = _gms + gid*nvarsg;
-  __global float *tmpgms = _tmpgms + gid*nvarsg;
+  __global float *gms = _gms + gid*nvarsg+_shiftsg[0];
+  __global float *tmpgms = _tmpgms + gid*nvarsg;//+_shiftsg[0];
   gms[gid] = tmpgms[gid];
   for(uint i=0; i<_nvarsg[0]; i++)
       gms[i] = tmpgms[i];
@@ -132,7 +132,7 @@ ptcshifts = [int(k) for k in tcshifts]
 print("Layer-to-layer conns is", topconns)
 print("Shifts for a conns is", tcshifts)
 topconnsg = [cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=np.array([ma], dtype=np.uint32)) for ma in topconns]
-tcshiftsg = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=tcshifts)
+tcshiftsg = [cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=np.array([ma], dtype=np.uint32)) for ma in tcshifts]
 obuf = np.array([99999.99999]).astype(np.float32) #Array for an best result
 olid = np.empty(1).astype(np.uint32)
 o_med = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
@@ -154,9 +154,12 @@ randsg = cl.Buffer(ctx, mf.READ_WRITE, arr_np.nbytes)   #Array of randoms
 randg = randfloat(ctx, nvarsg*nsamp)
 randg.reseed()
     
-dbg = True
+dbg = False
 
-for cy in range(1, 33):
+def printdbg(*args):
+    if dbg: print(args)
+
+for cy in range(1, 3300):
     if cy%8==0:
         clreducer.reduce_min(queue, res_g, nsamp, o_min, o_lid)
         cl.enqueue_copy(queue, obuf, o_min)
@@ -166,9 +169,9 @@ for cy in range(1, 33):
         if dbg: queue.finish()
         if dbg: print("Finish")
         kernels["finish"][k].runnet(queue, (ninpt,), None, gms, dnrg, vsrg, res_g)
-        if dbg: 
-            queue.finish()
-            exit()
+        #if dbg: 
+        #    queue.finish()
+        #    exit()
         _k+=1
         k = _k%lt; 
     else:
@@ -176,20 +179,19 @@ for cy in range(1, 33):
     if cy%512==0:
         randg.reseed()
     if obuf[0]<0.000001: break
+    printdbg(cy, k, "run.copy_inp Starts")
     if k==0: run.copy_inp(queue, (nvarsd*ninpt,), None, vsg, dnrg)
+    printdbg(cy, k, "ordinal .runnet Starts")
     kernels["ordinal"][k].runnet(queue, (nsamp,), None, gms, dnrg, vsrg, res_g)
+    printdbg(cy, k, "clreducer.sort Starts")
     clreducer.sort(queue, nsamp, res_g, ressg)
-    #cl.enqueue_copy(queue, olid, o_lid)
-    #print("min index is", olid)
-    #Reduce sort
-    #cl.enqueue_copy(queue, ressh, ressg)
     #Generate randoms
+    printdbg(cy, k, "randsg Starts")
     randg.randgen(randsg, int(topconns[k]), ptcshifts[k])
-    #print(len(res_np), " vs ", ressh.max() )
-    #print(res_np[ressh])
-    #Mutate
-    run.replicate_mutate(queue, (nsamp,), None, gms, tmpgms, ressg, res_g, randsg, topconnsg[k], global_offset=(ptcshifts[k],))
-    run.fillgms(queue, (nsamp,), None, gms, tmpgms, topconnsg[k], global_offset=(ptcshifts[k],))
+    printdbg(cy, k, "run.replicate_mutate Starts")
+    run.replicate_mutate(queue, (nsamp,), None, gms, tmpgms, ressg, res_g, randsg, topconnsg[k], tcshiftsg[k])
+    printdbg(cy, k, "run.fillgms Starts")
+    run.fillgms(queue, (nsamp,), None, gms, tmpgms, topconnsg[k], tcshiftsg[k])
 # Check on CPU with Numpy:
 print(currmin)
 cl.enqueue_copy(queue, ressh, ressg)
