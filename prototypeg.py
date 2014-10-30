@@ -27,9 +27,9 @@ ctx = cl.create_some_context()
 queue = cl.CommandQueue(ctx)
 
 result = 1.0
-ninpt = 5   #Samples count
-nvarsd = 9   #Count of equations members
-topology = [nvarsd, 7, 5, 1]
+ninpt = 2   #Samples count
+nvarsd = 5   #Count of equations members
+topology = [nvarsd, 4, 3, 2, 1]
 nvarsg = genn.countcns(topology)     #Count of equations members
 print("Total connections is", nvarsg)
 nsamp = ctx.get_info(cl.context_info.DEVICES)[0].max_work_group_size #Genome samples count (current sort limitation to local_size)
@@ -87,24 +87,28 @@ __kernel void replicate_mutate(__global float *_gms, __global float *_tmpgms,\
 
 }
 
-__kernel void savebest(__global float *_gms, __global float *_gm, __global float *res_g, __global float *bestres, __global uint *srt_idxs){
+__kernel void savebest(__global float *_gms, __global float *_gm, __global float *res_g, __global float *bestres, __global uint *srt_idxs,\
+                       __global uint *_nvarsg, __global uint *_shiftsg){
     uint idx = srt_idxs[0];
-    bestres[0] = res_g[idx];
-    __global float *gms = _gms + idx*nvarsg;
-    for(uint i=0; i<nvarsg; i++)
-        _gm[i] = gms[i];
+    if(res_g[idx] < bestres[0]){
+        bestres[0] = res_g[idx];
+        __global float *gms = _gms + idx*nvarsg+_shiftsg[0];
+        for(uint i=0; i<_nvarsg[0]; i++)
+            _gm[i] = gms[i];
+    }
 }
-__kernel void loadbest(__global float *_gms, __global float *_gm, __global float *res_g, __global float *bestres, __global uint *srt_idxs){
+__kernel void loadbest(__global float *_gms, __global float *_gm, __global float *res_g, __global float *bestres, __global uint *srt_idxs,\
+                       __global uint *_nvarsg, __global uint *_shiftsg){
     uint idx = srt_idxs[0];
     float stillbest = res_g[idx];
-    __global float *gms = _gms + idx*nvarsg;
+    __global float *gms = _gms + idx*nvarsg+_shiftsg[0];
     if(stillbest>bestres[0]){
-        for(uint i=0; i<nvarsg; i++){
+        for(uint i=0; i<_nvarsg[0]; i++){
             gms[i] = _gm[i];
         }
     } else {
         bestres[0] = stillbest;
-        for(uint i=0; i<nvarsg; i++)
+        for(uint i=0; i<_nvarsg[0]; i++)
             _gm[i] = gms[i];
     }
 }
@@ -140,10 +144,12 @@ o_min = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
 o_lid = cl.Buffer(ctx, mf.WRITE_ONLY, size=olid.nbytes)
 gmbg = cl.Buffer(ctx, mf.READ_WRITE, size=nvarsg*obuf.nbytes)
 brsg = cl.Buffer(ctx, mf.READ_WRITE, size=obuf.nbytes)
+cl.enqueue_copy(queue, brsg, np.array([np.inf], dtype=np.float32))
 vsg = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=inp_np)   #Device array of input data
-dnrg = cl.Buffer(ctx, mf.READ_WRITE, size=inp_np.nbytes) #Device array of input data
-vsrg = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=vsr)   #Device array of outpus data
-gms = cl.Buffer(ctx, mf.READ_WRITE| mf.COPY_HOST_PTR, hostbuf=arr_np) #Device array of genome
+dnrg = cl.Buffer(ctx, mf.READ_WRITE, size=inp_np.nbytes)                #Device array of input data
+run.copy_inp(queue, (nvarsd*ninpt,), None, vsg, dnrg)                   #Copy data to fst layer
+vsrg = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=vsr)     #Device array of outpus data
+gms = cl.Buffer(ctx, mf.READ_WRITE| mf.COPY_HOST_PTR, hostbuf=arr_np)   #Device array of genome
 tmpgms = cl.Buffer(ctx, mf.READ_WRITE, arr_np.nbytes)
 #Results buffers (as genome counts)
 res_np = np.empty(nsamp).astype(np.float32)             #Host array of equation results
@@ -154,18 +160,19 @@ randsg = cl.Buffer(ctx, mf.READ_WRITE, arr_np.nbytes)   #Array of randoms
 randg = randfloat(ctx, nvarsg*nsamp)
 randg.reseed()
     
-dbg = False
+dbg = True
 
 def printdbg(*args):
     if dbg: print(args)
 
-for cy in range(1, 3300):
+for cy in range(1, 17):
     if cy%8==0:
         clreducer.reduce_min(queue, res_g, nsamp, o_min, o_lid)
         cl.enqueue_copy(queue, obuf, o_min)
         if dbg: queue.finish()
-        print("min value is", obuf,". Load best")
-        run.loadbest(queue, (1,), None, gms, gmbg, res_g, brsg, ressg)
+        print("k=={0} of {1}. min value is {2}. Load best".format(k, lt, obuf[0]))
+        run.loadbest(queue, (1,), None, gms, gmbg, res_g, brsg, ressg, topconnsg[k], tcshiftsg[k])
+        cl.enqueue_copy(queue, brsg, np.array([np.inf], dtype=np.float32))
         if dbg: queue.finish()
         if dbg: print("Finish")
         kernels["finish"][k].runnet(queue, (ninpt,), None, gms, dnrg, vsrg, res_g)
@@ -174,8 +181,6 @@ for cy in range(1, 3300):
         #    exit()
         _k+=1
         k = _k%lt; 
-    else:
-        run.savebest(queue, (1,), None, gms, gmbg, res_g, brsg, ressg)
     if cy%512==0:
         randg.reseed()
     if obuf[0]<0.000001: break
@@ -183,8 +188,14 @@ for cy in range(1, 3300):
     if k==0: run.copy_inp(queue, (nvarsd*ninpt,), None, vsg, dnrg)
     printdbg(cy, k, "ordinal .runnet Starts")
     kernels["ordinal"][k].runnet(queue, (nsamp,), None, gms, dnrg, vsrg, res_g)
+    if dbg:
+        cl.enqueue_copy(queue, res_np, res_g)
+        res_np.sort()
+        print("Sorted results is", res_np)
+
     printdbg(cy, k, "clreducer.sort Starts")
     clreducer.sort(queue, nsamp, res_g, ressg)
+    if cy%8!=0: run.savebest(queue, (1,), None, gms, gmbg, res_g, brsg, ressg, topconnsg[k], tcshiftsg[k])
     #Generate randoms
     printdbg(cy, k, "randsg Starts")
     randg.randgen(randsg, int(topconns[k]), ptcshifts[k])

@@ -113,6 +113,7 @@ def genkern2(samples, topology, cmpfunc):
     ss = []
     ses = []
     #shiftsg = [0]+len(a)*[a[0]*samples]
+    dcs = [0]+len(a)*[a[0]]
     for n in range(0, len(a)-1):
         s = []
         kname = "runnet"
@@ -164,11 +165,11 @@ def genkern2(samples, topology, cmpfunc):
         dm-=1
         s.append((dm)*"\t"+"}//\"Samples\" loop "+str(n))
         s.append((dm)*"\t"+"results[gid] = result;\n}") #Kernel end
-        s = ["#define SC {0}".format(samples), "#define DC 0", "#define CS "+str(conns[n]), "#define CN "+str(sconns[n])] + s
+        s = ["#define SC {0}".format(samples), "#define DC {0}".format(dcs[n]), "#define CS "+str(sconns[n]), "#define CN "+str(conns[n])] + s
         se = ["#define SC 1", "#define DC {0}".format(a[0]), "#define CS 0", "#define CN 0"]+se
         ss.append(cmpfunc("\n".join(s)))
         ses.append(cmpfunc("\n".join(se)))
-        if n==0:
+        if n==1:
             print("\n".join(s))
             print("\n".join(se))
     return {"ordinal":ss, "finish":ses}
