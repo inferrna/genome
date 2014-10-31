@@ -165,7 +165,7 @@ dbg = True
 def printdbg(*args):
     if dbg: print(args)
 
-for cy in range(1, 17):
+for cy in range(1, 34):    
     if cy%8==0:
         clreducer.reduce_min(queue, res_g, nsamp, o_min, o_lid)
         cl.enqueue_copy(queue, obuf, o_min)
@@ -175,7 +175,7 @@ for cy in range(1, 17):
         cl.enqueue_copy(queue, brsg, np.array([np.inf], dtype=np.float32))
         if dbg: queue.finish()
         if dbg: print("Finish")
-        kernels["finish"][k].runnet(queue, (ninpt,), None, gms, dnrg, vsrg, res_g)
+        if k < (lt-1): kernels["finish"][k].runnet(queue, (ninpt,), None, gms, dnrg, vsrg, res_g)
         #if dbg: 
         #    queue.finish()
         #    exit()
@@ -187,6 +187,11 @@ for cy in range(1, 17):
     printdbg(cy, k, "run.copy_inp Starts")
     if k==0: run.copy_inp(queue, (nvarsd*ninpt,), None, vsg, dnrg)
     printdbg(cy, k, "ordinal .runnet Starts")
+    if dbg:
+        cl.enqueue_copy(queue, inp_np, dnrg)
+        print("Device input is", inp_np, " Contains {0} NaNs.".format(np.count_nonzero(np.isnan(inp_np))))
+        cl.enqueue_copy(queue, arr_np, gms)
+        print("Device coeffs is", arr_np, " Contains {0} NaNs.".format(np.count_nonzero(np.isnan(arr_np))))
     kernels["ordinal"][k].runnet(queue, (nsamp,), None, gms, dnrg, vsrg, res_g)
     if dbg:
         cl.enqueue_copy(queue, res_np, res_g)

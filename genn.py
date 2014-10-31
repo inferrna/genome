@@ -120,8 +120,8 @@ def genkern2(samples, topology, cmpfunc):
         s.append("__kernel void "+kname+"(__global float *_gconns, __global float *_"+\
                  lneurons[(n+1)%2]+", __global float *gtargets, __global float *results){")
         s.append(dm*"\t"+"uint gid = get_global_id(0);")
-        s.append(dm*"\t"+"float dnr[{0}];".format(a[n]))
-        s.append(dm*"\t"+"float lnr[{0}];".format(a[n]))
+        s.append(dm*"\t"+"float dnr[{0}]".format(a[n])+";// = {"+", ".join(["0.0"])+"};")
+        s.append(dm*"\t"+"float lnr[{0}]".format(a[n])+";// = {"+", ".join(["0.0"])+"};")
         s.append(dm*"\t"+"__global float *g{0} = _{0} + gid*DC;".format(lneurons[(n+1)%2])) #Data Count
         s.append(dm*"\t"+"float result = 0.0;")
         s.append(dm*"\t"+"__global float *gconns = _gconns+CS+CN*gid;")    #Conns shift and Conns number
@@ -161,7 +161,9 @@ def genkern2(samples, topology, cmpfunc):
         currner += a[n]
         #dm+=1
         s.append(dm*"\t"+"g{0} += {1};".format(lneurons[(n+1)%2], a[0]))
-        s.append((dm)*"\t"+"result += fabs(gtargets[{0}] - {1}[0]);".format(counters[dm-1], lneurons[n%2])) #"Samples" loop
+        s.append((dm)*"\t"+"result += fabs(gtargets[{0}] - {1}[0]);".format(counters[dm-1], lneurons[m%2])) #"Samples" loop
+        s.append(dm*"\t"+"for(uint {0}=0; {0}<{1}; {0}++)".format(counters[dm], str(a[n])))
+        s.append((dm+1)*"\t"+"{0}[{1}] = 0.0;".format(lneurons[m%2], counters[dm])) #"Samples" loop
         dm-=1
         s.append((dm)*"\t"+"}//\"Samples\" loop "+str(n))
         s.append((dm)*"\t"+"results[gid] = result;\n}") #Kernel end
@@ -169,7 +171,7 @@ def genkern2(samples, topology, cmpfunc):
         se = ["#define SC 1", "#define DC {0}".format(a[0]), "#define CS 0", "#define CN 0"]+se
         ss.append(cmpfunc("\n".join(s)))
         ses.append(cmpfunc("\n".join(se)))
-        if n==1:
+        if n==0:#len(a)-2:
             print("\n".join(s))
             print("\n".join(se))
     return {"ordinal":ss, "finish":ses}
