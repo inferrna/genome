@@ -165,7 +165,7 @@ dbg = True
 def printdbg(*args):
     if dbg: print(args)
 
-for cy in range(1, 34):    
+for cy in range(1, 17):    
     if cy%8==0:
         clreducer.reduce_min(queue, res_g, nsamp, o_min, o_lid)
         cl.enqueue_copy(queue, obuf, o_min)
@@ -184,8 +184,9 @@ for cy in range(1, 34):
     if cy%512==0:
         randg.reseed()
     if obuf[0]<0.000001: break
-    printdbg(cy, k, "run.copy_inp Starts")
-    if k==0: run.copy_inp(queue, (nvarsd*ninpt,), None, vsg, dnrg)
+    if k==0:
+        printdbg(cy, k, "run.copy_inp Starts")
+        run.copy_inp(queue, (nvarsd*ninpt,), None, vsg, dnrg)
     printdbg(cy, k, "ordinal .runnet Starts")
     if dbg:
         cl.enqueue_copy(queue, inp_np, dnrg)

@@ -131,8 +131,10 @@ def genkern2(samples, topology, cmpfunc):
         nextner += a[n]
         s.append(dm*"\t"+"for(uint {0}=0; {0}<SC; {0}++)".format(counters[dm])+"{ //\"Samples\" loop "+str(n)) #"Samples" loop
         dm+=1
-        s.append(dm*"\t"+"for(uint {0}=0; {0}<{1}; {0}++)".format(counters[dm], str(a[n])))
+        s.append(dm*"\t"+"for(uint {0}=0; {0}<{1}; {0}++)".format(counters[dm], str(a[n]))+"{")
         s.append((dm+1)*"\t"+"{0}[{1}] = g{0}[{1}];".format(lneurons[(n+1)%2], counters[dm]))
+        s.append((dm+1)*"\t"+"{0}[{1}] = 0.0;".format(lneurons[n%2], counters[dm]))
+        s.append(dm*"\t"+"}")
         for m in range(n, len(a)-1):
             s.append(dm*"\t"+"for(uint {0}=0; {0}<{1}; {0}++)".format(counters[dm], str(a[m]))+"{ //\"Neurons\" loop "+str(m)) #"Neurons" loop
             if(a[n+1]>1):
@@ -155,6 +157,7 @@ def genkern2(samples, topology, cmpfunc):
                 se.append((dm)*"\t"+"barrier(CLK_GLOBAL_MEM_FENCE);")
                 se.append((dm)*"\t"+"for(uint {0}=0; {0}<{1}; {0}++)".format(counters[dm], str(a[n+1])))
                 se.append((dm+1)*"\t"+"g{0}[{1}] = {2}[{1}];".format(lneurons[(m+1)%2], counters[dm], lneurons[(m)%2]))
+                se.append(dm*"\t"+"g{0} += {1};".format(lneurons[(n+1)%2], a[0]))
                 se.append((dm-1)*"\t"+"}//\"Samples\" loop "+str(n))
                 se.append("}") #"Kernel" end
         currcon += a[n]*a[n+1]
@@ -167,8 +170,8 @@ def genkern2(samples, topology, cmpfunc):
         dm-=1
         s.append((dm)*"\t"+"}//\"Samples\" loop "+str(n))
         s.append((dm)*"\t"+"results[gid] = result;\n}") #Kernel end
-        s = ["#define SC {0}".format(samples), "#define DC {0}".format(dcs[n]), "#define CS "+str(sconns[n]), "#define CN "+str(conns[n])] + s
-        se = ["#define SC 1", "#define DC {0}".format(a[0]), "#define CS 0", "#define CN 0"]+se
+        s = ["#define SC {0}".format(samples), "#define DC {0} //Step for prev layer data by each gen".format(dcs[n]), "#define CS {0}".format(sconns[n]), "#define CN "+str(conns[n])] + s
+        se = ["#define SC 1", "#define DC {0} //Step for input data".format(a[0]), "#define CS {0}".format(sconns[n]), "#define CN 0"]+se
         ss.append(cmpfunc("\n".join(s)))
         ses.append(cmpfunc("\n".join(se)))
         if n==0:#len(a)-2:
