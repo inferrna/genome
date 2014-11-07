@@ -170,11 +170,11 @@ def genkern2(samples, topology, cmpfunc):
         dm-=1
         s.append((dm)*"\t"+"}//\"Samples\" loop "+str(n))
         s.append((dm)*"\t"+"results[gid] = result;\n}") #Kernel end
-        s = ["#define SC {0}".format(samples), "#define DC {0} //Step for prev layer data by each gen".format(dcs[n]), "#define CS {0}".format(sconns[n]), "#define CN "+str(conns[n])] + s
+        s = ["#define SC {0}".format(samples), "#define DC {0} //Step for prev layer data by each gen".format(dcs[n]), "#define CS {0}".format(sconns[n]), "#define CN {0}".format(conns.sum())] + s
         se = ["#define SC 1", "#define DC {0} //Step for input data".format(a[0]), "#define CS {0}".format(sconns[n]), "#define CN 0"]+se
         ss.append(cmpfunc("\n".join(s)))
         ses.append(cmpfunc("\n".join(se)))
-        if n==0:#len(a)-2:
+        if n==2:#len(a)-2:
             print("\n".join(s))
             print("\n".join(se))
     return {"ordinal":ss, "finish":ses}
