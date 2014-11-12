@@ -27,9 +27,9 @@ ctx = cl.create_some_context()
 queue = cl.CommandQueue(ctx)
 
 result = 1.0
-ninpt = 2   #Samples count
-nvarsd = 5   #Count of equations members
-topology = [nvarsd, 3, 2, 1]
+ninpt = 3   #Samples count
+nvarsd = 9   #Count of equations members
+topology = [nvarsd, 7, 5, 3, 2, 1]
 nvarsg = genn.countcns(topology)     #Count of equations members
 print("Total connections is", nvarsg)
 nsamp = ctx.get_info(cl.context_info.DEVICES)[0].max_work_group_size #Genome samples count (current sort limitation to local_size)
@@ -81,8 +81,8 @@ __kernel void replicate_mutate(__global float *_gms, __global float *_tmpgms,\
   __global float *rnd = _rnd + gid*nvarsg+_shiftsg[0];
   __global float *tmpgms = _tmpgms + gid*nvarsg;//+_shiftsg[0];
   //float gml[nvarsg];
-  float _cf = res_g[idx]/1000.0;
-  float cf = cf<0.01?cf:0.01;
+  float _cf = res_g[idx];
+  float cf = _cf<0.1?_cf:0.1;
   for(i=0; i<_nvarsg[0]; i++)
       tmpgms[i] = gms[i]+rnd[i]*cf;
 
@@ -161,13 +161,13 @@ randsg = cl.Buffer(ctx, mf.READ_WRITE, arr_np.nbytes)   #Array of randoms
 randg = randfloat(ctx, nvarsg*nsamp)
 randg.reseed()
     
-dbg = True
+dbg = False
 layertries = 4
 
 def printdbg(*args):
     if dbg: print(args)
 
-for cy in range(1, 13):    
+for cy in range(1, 16000):    
     if cy%layertries==0:
         clreducer.reduce_min(queue, res_g, nsamp, o_min, o_lid)
         cl.enqueue_copy(queue, obuf, o_min)
@@ -224,4 +224,10 @@ cl.enqueue_copy(queue, arr_np, gms)
 solve = arr4np[ressh[0]]
 print("\nSolve coeffs\n", solve)
 print("\nInput\n", inp4np)
-print("\nEquation solved\n", [s.sum() for s in inp4np*solve])
+#print("\nEquation solved\n", [s.sum() for s in inp4np*solve])
+print("OpenCL recheck..")
+cl.enqueue_copy(queue, gms, solve)
+run.copy_inp(queue, (nvarsd*ninpt,), None, vsg, dnrg)
+kernels["ordinal"][0].runnet(queue, (1,), None, gms, dnrg, vsrg, res_g)
+cl.enqueue_copy(queue, res_np, res_g)
+print("got", res_np[0])

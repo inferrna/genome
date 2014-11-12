@@ -132,7 +132,7 @@ def genkern2(samples, topology, cmpfunc):
         s.append(dm*"\t"+"for(uint {0}=0; {0}<SC; {0}++)".format(counters[dm])+"{ //\"Samples\" loop "+str(n)) #"Samples" loop
         dm+=1
         s.append(dm*"\t"+"for(uint {0}=0; {0}<{1}; {0}++)".format(counters[dm], str(a[n]))+"{")
-        s.append((dm+1)*"\t"+"{0}[{1}] = g{0}[{1}];".format(lneurons[(n+1)%2], counters[dm]))
+        s.append((dm+1)*"\t"+"{0}[{1}] = {2}{0}[{1}];".format(lneurons[(n+1)%2], counters[dm], ['_', 'g'][int(n>0)]))
         s.append((dm+1)*"\t"+"{0}[{1}] = 0.0;".format(lneurons[n%2], counters[dm]))
         s.append(dm*"\t"+"}")
         for m in range(n, len(a)-1):
@@ -174,7 +174,7 @@ def genkern2(samples, topology, cmpfunc):
         se = ["#define SC 1", "#define DC {0} //Step for input data".format(a[0]), "#define CS {0}".format(sconns[n]), "#define CN 0"]+se
         ss.append(cmpfunc("\n".join(s)))
         ses.append(cmpfunc("\n".join(se)))
-        if n==2:#len(a)-2:
+        if n==0:#len(a)-2:
             print("\n".join(s))
             print("\n".join(se))
     return {"ordinal":ss, "finish":ses}
