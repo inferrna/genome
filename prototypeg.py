@@ -27,7 +27,7 @@ ctx = cl.create_some_context()
 queue = cl.CommandQueue(ctx)
 
 result = 1.0
-ninpt =  3   #Samples count
+ninpt =  9   #Samples count
 nvarsd = 9   #Count of equations members
 topology = [nvarsd, 7, 5, 3, 1]
 nvarsg = genn.countcns(topology)     #Count of equations members
@@ -49,12 +49,14 @@ vsr = np.array([1.0]*ninpt, dtype=np.float32)
 mf = cl.mem_flags
 #Generate indices for cloning
 s = np.concatenate((np.array([0], dtype=np.uint), np.linspace(2, 7, num=nsamp//4).astype(np.uint).cumsum(),))
+#print(s)
+#exit()
 hs = np.empty(nsamp, dtype=np.uint)     #Distribution of sotred indexes to new genome
 hs.fill(0)
 for x in range(0, len(s)-1):
     sx = np.arange(s[x], s[x+1]).astype(np.uint)
     for sxi in sx:
-        if sxi<len(s): hs[sxi] = x
+        if sxi<len(hs): hs[sxi] = x
 
 defines = \
 "#define nvarsd "+str(nvarsd)+"\n"+\
@@ -62,9 +64,7 @@ defines = \
 "#define ninpt "+str(ninpt)+"\n\n"
 kernels = genn.genkern2(ninpt, topology, lambda x: cl.Program(ctx, x).build())
 print(kernels)
-#exit()
-run = cl.Program(ctx, defines+genn.genkern(ninpt, topology)+"\n"+\
-"""
+prsrc = """
 __kernel void copy_inp(__global float *inpt, __global float *dnr){
     uint gid = get_global_id(0);
     dnr[gid] = inpt[gid];
@@ -74,7 +74,7 @@ __kernel void replicate_mutate(__global float *_gms, __global float *_tmpgms,\
                                __global uint *srt_idxs, __global float *res_g,\
                                __global float *_rnd, __global uint *_nvarsg, __global uint *_shiftsg) {
   uint gid = get_global_id(0);
-  const uint hs[] = {"""+", ".join([str(hh) for hh in hs])+"""}; //Indexes for allocate cutted population to full
+  const uint hs["""+str(len(hs))+"""] = {"""+", ".join([str(hh) for hh in hs])+"""}; //Indexes for allocate cutted population to full
   uint h = hs[gid];                           
   uint i, idx = srt_idxs[h];                  //Sorted indexes of population
   __global float *gms = _gms + idx*nvarsg+_shiftsg[0];
@@ -122,7 +122,10 @@ __kernel void fillgms(__global float *_gms, __global float *_tmpgms, __global ui
   for(uint i=0; i<_nvarsg[0]; i++)
       gms[i] = tmpgms[i];
 }
-""").build()
+"""
+print("\n", prsrc,"\n")
+run = cl.Program(ctx, defines+genn.genkern(ninpt, topology)+"\n"+prsrc).build()
+#exit()
 #Metabuffer for opencl datas
 global_offset = None
 g_times_l = False
@@ -161,7 +164,7 @@ randsg = cl.Buffer(ctx, mf.READ_WRITE, arr_np.nbytes)   #Array of randoms
 randg = randfloat(ctx, nvarsg*nsamp)
 randg.reseed()
     
-dbg = False
+dbg = True
 layertries = 4
 
 def printdbg(*args):
