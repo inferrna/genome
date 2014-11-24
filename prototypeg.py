@@ -27,9 +27,9 @@ ctx = cl.create_some_context()
 queue = cl.CommandQueue(ctx)
 
 result = 1.0
-ninpt = 3   #Samples count
+ninpt =  3   #Samples count
 nvarsd = 9   #Count of equations members
-topology = [nvarsd, 7, 5, 3, 2, 1]
+topology = [nvarsd, 7, 5, 3, 1]
 nvarsg = genn.countcns(topology)     #Count of equations members
 print("Total connections is", nvarsg)
 nsamp = ctx.get_info(cl.context_info.DEVICES)[0].max_work_group_size #Genome samples count (current sort limitation to local_size)
