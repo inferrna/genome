@@ -170,10 +170,11 @@ class cl_reduce():
         loc_buf = cl.LocalMemory(4*self.n_threads)
         loc_lid = cl.LocalMemory(4*self.n_threads)
         #print("N==", N, "n_threads==", self.n_threads)
-        evt = self.prgmna.reduce(queue, (N,), (self.n_threads,), a_buf, r_buf, q_buf, o_lid, loc_buf, loc_lid)
+        minnt = min(N, self.n_threads)
+        evt = self.prgmna.reduce(queue, (N,), (minnt,), a_buf, r_buf, q_buf, o_lid, loc_buf, loc_lid)
         evt.wait()
         #print(evt.profile.end - evt.profile.start)
-        n_threads = N//self.n_threads
+        n_threads = N//minnt
         evt = self.prgmnb.reduce(queue, (n_threads,), (n_threads,), r_buf, o_buf, q_buf, o_lid, loc_buf, loc_lid)
         evt.wait()
         #print(evt.profile.end - evt.profile.start)
@@ -182,6 +183,7 @@ class cl_reduce():
         loc_aux = cl.LocalMemory(16*self.n_threads)
         loc_idx = cl.LocalMemory(16*self.n_threads)
         #print("N==", N, "n_threads==", self.n_threads)
-        evt = self.prgsrt.ParallelBitonic_Local(queue, (self.n_threads,), (self.n_threads,), a_buf, o_buf, loc_aux, loc_idx)
+        minnt = min(N, self.n_threads)
+        evt = self.prgsrt.ParallelBitonic_Local(queue, (minnt,), (minnt,), a_buf, o_buf, loc_aux, loc_idx)
         evt.wait()
 

@@ -28,8 +28,8 @@ queue = cl.CommandQueue(ctx)
 
 result = 1.0
 ninpt =  9   #Samples count
-nvarsd = 9   #Count of equations members
-topology = [nvarsd, 7, 5, 3, 1]
+nvarsd = 7   #Count of equations members
+topology = [nvarsd, 511, 255, 127, 1]
 nvarsg = genn.countcns(topology)     #Count of equations members
 print("Total connections is", nvarsg)
 nsamp = ctx.get_info(cl.context_info.DEVICES)[0].max_work_group_size #Genome samples count (current sort limitation to local_size)
@@ -48,7 +48,7 @@ vsr = np.array([1.0]*ninpt, dtype=np.float32)
 
 mf = cl.mem_flags
 #Generate indices for cloning
-s = np.concatenate((np.array([0], dtype=np.uint), np.linspace(2, 7, num=nsamp//4).astype(np.uint).cumsum(),))
+s = np.concatenate((np.array([0], dtype=np.uint), np.linspace(3, 12, num=nsamp//8).astype(np.uint).cumsum(),))
 #print(s)
 #exit()
 hs = np.empty(nsamp, dtype=np.uint)     #Distribution of sotred indexes to new genome
@@ -64,6 +64,7 @@ defines = \
 "#define ninpt "+str(ninpt)+"\n\n"
 kernels = genn.genkern2(ninpt, topology, lambda x: cl.Program(ctx, x).build())
 print(kernels)
+#uint hs["""+str(len(hs))+"""] = {"""+", ".join([str(hh) for hh in hs])+"""}; //Indexes for allocate cutted population to full
 prsrc = """
 __kernel void copy_inp(__global float *inpt, __global float *dnr){
     uint gid = get_global_id(0);
@@ -72,9 +73,9 @@ __kernel void copy_inp(__global float *inpt, __global float *dnr){
 
 __kernel void replicate_mutate(__global float *_gms, __global float *_tmpgms,\
                                __global uint *srt_idxs, __global float *res_g,\
-                               __global float *_rnd, __global uint *_nvarsg, __global uint *_shiftsg) {
+                               __global float *_rnd, __global uint *_nvarsg, 
+                               __global uint *_shiftsg, __constant uint *hs) {
   uint gid = get_global_id(0);
-  const uint hs["""+str(len(hs))+"""] = {"""+", ".join([str(hh) for hh in hs])+"""}; //Indexes for allocate cutted population to full
   uint h = hs[gid];                           
   uint i, idx = srt_idxs[h];                  //Sorted indexes of population
   __global float *gms = _gms + idx*nvarsg+_shiftsg[0];
@@ -153,6 +154,7 @@ vsg = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=inp_np)   #Device 
 dnrg = cl.Buffer(ctx, mf.READ_WRITE, size=inp_np.nbytes)                #Device array of input data
 run.copy_inp(queue, (nvarsd*ninpt,), None, vsg, dnrg)                   #Copy data to fst layer
 vsrg = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=vsr)     #Device array of outpus data
+hsg = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=np.array(hs, dtype=np.uint32))     #Device array of indexes
 gms = cl.Buffer(ctx, mf.READ_WRITE| mf.COPY_HOST_PTR, hostbuf=arr_np)   #Device array of genome
 tmpgms = cl.Buffer(ctx, mf.READ_WRITE, arr_np.nbytes)
 #Results buffers (as genome counts)
@@ -164,8 +166,8 @@ randsg = cl.Buffer(ctx, mf.READ_WRITE, arr_np.nbytes)   #Array of randoms
 randg = randfloat(ctx, nvarsg*nsamp)
 randg.reseed()
     
-dbg = True
-layertries = 4
+dbg = False
+layertries = 8
 
 def printdbg(*args):
     if dbg: print(args)
@@ -217,7 +219,7 @@ for cy in range(1, 16000):
     printdbg(cy, k, "randsg Starts")
     randg.randgen(randsg, int(topconns[k]), ptcshifts[k])
     printdbg(cy, k, "run.replicate_mutate Starts")
-    run.replicate_mutate(queue, (nsamp,), None, gms, tmpgms, ressg, res_g, randsg, topconnsg[k], tcshiftsg[k])
+    run.replicate_mutate(queue, (nsamp,), None, gms, tmpgms, ressg, res_g, randsg, topconnsg[k], tcshiftsg[k], hsg)
     printdbg(cy, k, "run.fillgms Starts")
     run.fillgms(queue, (nsamp,), None, gms, tmpgms, topconnsg[k], tcshiftsg[k])
 # Check on CPU with Numpy:

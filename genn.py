@@ -123,14 +123,15 @@ def genkern2(samples, topology, cmpfunc):
         s.append(dm*"\t"+"float dnr[{0}]".format(a[n])+";// = {"+", ".join(["0.0"])+"};")
         s.append(dm*"\t"+"float lnr[{0}]".format(a[n])+";// = {"+", ".join(["0.0"])+"};")
         s.append(dm*"\t"+"__global float *g{0} = _{0} + gid*DC;".format(lneurons[(n+1)%2])) #Data Count
+        s.append(dm*"\t"+"__global float *gconns;")    #Conns shift and Conns number
         s.append(dm*"\t"+"float result = 0.0;")
-        s.append(dm*"\t"+"__global float *gconns = _gconns+CS+CN*gid;")    #Conns shift and Conns number
         #s.append((dm)*"\t"+"__global float gneurons = _gneurons+{0};".format(neuronss[n])) #"Samples" loop
         #dm+=1
         currcon += a[n]*a[n+1]
         nextner += a[n]
         s.append(dm*"\t"+"for(uint {0}=0; {0}<SC; {0}++)".format(counters[dm])+"{ //\"Samples\" loop "+str(n)) #"Samples" loop
         dm+=1
+        s.append(dm*"\t"+"gconns = _gconns+CS+CN*gid;")    #Conns shift and Conns number
         s.append(dm*"\t"+"for(uint {0}=0; {0}<{1}; {0}++)".format(counters[dm], str(a[n]))+"{")
         s.append((dm+1)*"\t"+"{0}[{1}] = {2}{0}[{1}];".format(lneurons[(n+1)%2], counters[dm], ['_', 'g'][int(n>0)]))
         s.append((dm+1)*"\t"+"{0}[{1}] = 0.0;".format(lneurons[n%2], counters[dm]))
@@ -152,6 +153,7 @@ def genkern2(samples, topology, cmpfunc):
                 s.append((dm+1)*"\t"+"}") #"Connections" loop
             s.append((dm+1)*"\t"+"{0}[{1}] = 0.0;".format(lneurons[(m+1)%2], counters[dm]))
             s.append(dm*"\t"+"}") #"Neurons" loop
+            s.append(dm*"\t"+"gconns += {0};".format(a[m]*a[m+1])) #"Neurons" loop
             if m==n:
                 se = copy.copy(s)
                 se.append((dm)*"\t"+"barrier(CLK_GLOBAL_MEM_FENCE);")
@@ -170,11 +172,11 @@ def genkern2(samples, topology, cmpfunc):
         dm-=1
         s.append((dm)*"\t"+"}//\"Samples\" loop "+str(n))
         s.append((dm)*"\t"+"results[gid] = result;\n}") #Kernel end
-        s = ["#define SC {0}".format(samples), "#define DC {0} //Step for prev layer data by each gen".format(dcs[n]), "#define CS {0}".format(sconns[n]), "#define CN {0}".format(conns.sum())] + s
+        s = ["#define SC {0}".format(samples), "#define DC 0 //Step for prev layer data by each gen".format(dcs[n]), "#define CS {0}".format(sconns[n]), "#define CN {0}".format(conns.sum())] + s
         se = ["#define SC 1", "#define DC {0} //Step for input data".format(a[0]), "#define CS {0}".format(sconns[n]), "#define CN 0"]+se
         ss.append(cmpfunc("\n".join(s)))
         ses.append(cmpfunc("\n".join(se)))
-        if n==0:#len(a)-2:
+        if n==1:#len(a)-2:
             print("\n".join(s))
             print("\n".join(se))
     return {"ordinal":ss, "finish":ses}
