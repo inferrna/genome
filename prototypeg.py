@@ -29,7 +29,7 @@ queue = cl.CommandQueue(ctx)
 result = 1.0
 ninpt =  3   #Samples count
 nvarsd = 5   #Count of equations members
-topology = [nvarsd, 3, 2, 1]
+topology = [nvarsd, 4, 3, 2, 1]
 nvarsg = genn.countcns(topology)     #Count of equations members
 print("Total connections is", nvarsg)
 nsamp = ctx.get_info(cl.context_info.DEVICES)[0].max_work_group_size #Genome samples count (current sort limitation to local_size)
@@ -177,8 +177,11 @@ for cy in range(1, 16000):
         clreducer.reduce_min(queue, res_g, nsamp, o_min, o_lid)
         cl.enqueue_copy(queue, obuf, o_min)
         if dbg: queue.finish()
+        #!!!Need compare with sorting result
         print("k=={0} of {1}. min value is {2}. Load best".format(k, lt, obuf[0]))
-        run.loadbest(queue, (nsamp,), None, gms, gmbg, res_g, brsg, ressg, topconnsg[k], tcshiftsg[k])
+        #Store best at 0 point
+        run.loadbest(queue, (nsamp,), None, gms, gmbg, res_g, brsg, ressg, topconnsg[k], tcshiftsg[k]).wait()
+        if k==0 and obuf[0]<0.000001: break
         if dbg:
             cl.enqueue_copy(queue, obuf, brsg)
             print("Loaded best result is {0}".format(obuf[0]))
@@ -186,6 +189,8 @@ for cy in range(1, 16000):
         if dbg: queue.finish()
         if dbg: print("Finish")
         if k==0 and obuf[0]<0.000001: break
+        ###Cutted run below. Use the best gene stored in gms ###
+        if k < (lt-1): kernels["finish"][k].runnet(queue, (ninpt,), None, gms, dnrg, vsrg, res_g)
 
     ###Generate randoms###
     printdbg(cy, k, "randsg Starts")
@@ -196,8 +201,6 @@ for cy in range(1, 16000):
     run.fillgms(queue, (nsamp,), None, gms, tmpgms, topconnsg[k], tcshiftsg[k])
 
     if cy%layertries==0:
-        ###Cutted run below. Use the best gene stored in gms ###
-        if k < (lt-1): kernels["finish"][k].runnet(queue, (ninpt,), None, gms, dnrg, vsrg, res_g)
         _k+=1
         k = _k%lt; 
     if cy%512==0:
@@ -238,8 +241,19 @@ print("OpenCL recheck..")
 cl.enqueue_copy(queue, gms, solve)
 run.copy_inp(queue, (nvarsd*ninpt,), None, vsg, dnrg)
 kernels["ordinal"][0].runnet(queue, (1,), None, gms, dnrg, vsrg, res_g)
-cl.enqueue_copy(queue, res_np, res_g)
-print("got", res_np[0])
+cl.enqueue_copy(queue, res_np, res_g).wait()
+print("0 got", res_np[0])
+kernels["finish"][0].runnet(queue, (ninpt,), None, gms, dnrg, vsrg, res_g)
+kernels["ordinal"][1].runnet(queue, (1,), None, gms, dnrg, vsrg, res_g)
+cl.enqueue_copy(queue, res_np, res_g).wait()
+print("1 got", res_np[0])
+kernels["finish"][1].runnet(queue, (ninpt,), None, gms, dnrg, vsrg, res_g)
+kernels["ordinal"][2].runnet(queue, (1,), None, gms, dnrg, vsrg, res_g)
+cl.enqueue_copy(queue, res_np, res_g).wait()
+print("2 got", res_np[0])
+
+
+
 from npsolve import runner
 print("CPU recheck..")
 print(runner(solve, inp4np, ptcshifts[1:], topology))

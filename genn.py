@@ -176,7 +176,7 @@ def genkern2(samples, topology, cmpfunc):
         se = ["#define SC 1", "#define DC {0} //Step for input data".format(a[0]), "#define CS {0}".format(sconns[n]), "#define CN 0"]+se
         ss.append(cmpfunc("\n".join(s)))
         ses.append(cmpfunc("\n".join(se)))
-        if n==1:#len(a)-2:
+        if n==0:#len(a)-2:
             print("\n".join(s))
             print("\n".join(se))
     return {"ordinal":ss, "finish":ses}
