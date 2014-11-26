@@ -27,9 +27,9 @@ ctx = cl.create_some_context()
 queue = cl.CommandQueue(ctx)
 
 result = 1.0
-ninpt =  9   #Samples count
-nvarsd = 7   #Count of equations members
-topology = [nvarsd, 511, 255, 127, 1]
+ninpt =  3   #Samples count
+nvarsd = 5   #Count of equations members
+topology = [nvarsd, 3, 2, 1]
 nvarsg = genn.countcns(topology)     #Count of equations members
 print("Total connections is", nvarsg)
 nsamp = ctx.get_info(cl.context_info.DEVICES)[0].max_work_group_size #Genome samples count (current sort limitation to local_size)
@@ -108,11 +108,11 @@ __kernel void loadbest(__global float *_gms, __global float *_gm, __global float
         for(uint i=0; i<_nvarsg[0]; i++){
             gms[i] = _gm[i];
         }
-    }/* else {
+    } else {
         bestres[0] = stillbest;
         for(uint i=0; i<_nvarsg[0]; i++)
             _gm[i] = gms[i];
-    }*/
+    }
 }
 
 __kernel void fillgms(__global float *_gms, __global float *_tmpgms, __global uint *_nvarsg, __global uint *_shiftsg) {
@@ -185,13 +185,23 @@ for cy in range(1, 16000):
         cl.enqueue_copy(queue, brsg, np.array([np.inf], dtype=np.float32))
         if dbg: queue.finish()
         if dbg: print("Finish")
+        if k==0 and obuf[0]<0.000001: break
+
+    ###Generate randoms###
+    printdbg(cy, k, "randsg Starts")
+    randg.randgen(randsg, int(topconns[k]), ptcshifts[k])
+    printdbg(cy, k, "run.replicate_mutate Starts")
+    run.replicate_mutate(queue, (nsamp,), None, gms, tmpgms, ressg, res_g, randsg, topconnsg[k], tcshiftsg[k], hsg)
+    printdbg(cy, k, "run.fillgms Starts")
+    run.fillgms(queue, (nsamp,), None, gms, tmpgms, topconnsg[k], tcshiftsg[k])
+
+    if cy%layertries==0:
         ###Cutted run below. Use the best gene stored in gms ###
         if k < (lt-1): kernels["finish"][k].runnet(queue, (ninpt,), None, gms, dnrg, vsrg, res_g)
         _k+=1
         k = _k%lt; 
     if cy%512==0:
         randg.reseed()
-    if obuf[0]<0.000001: break
     if k==0:
         printdbg(cy, k, "run.copy_inp Starts")
         run.copy_inp(queue, (nvarsd*ninpt,), None, vsg, dnrg)
@@ -215,13 +225,7 @@ for cy in range(1, 16000):
     if dbg:
         cl.enqueue_copy(queue, obuf, brsg)
         print("Saved best result is {0}".format(obuf[0]))
-    ###Generate randoms###
-    printdbg(cy, k, "randsg Starts")
-    randg.randgen(randsg, int(topconns[k]), ptcshifts[k])
-    printdbg(cy, k, "run.replicate_mutate Starts")
-    run.replicate_mutate(queue, (nsamp,), None, gms, tmpgms, ressg, res_g, randsg, topconnsg[k], tcshiftsg[k], hsg)
-    printdbg(cy, k, "run.fillgms Starts")
-    run.fillgms(queue, (nsamp,), None, gms, tmpgms, topconnsg[k], tcshiftsg[k])
+
 # Check on CPU with Numpy:
 print(currmin)
 cl.enqueue_copy(queue, ressh, ressg)
@@ -236,3 +240,6 @@ run.copy_inp(queue, (nvarsd*ninpt,), None, vsg, dnrg)
 kernels["ordinal"][0].runnet(queue, (1,), None, gms, dnrg, vsrg, res_g)
 cl.enqueue_copy(queue, res_np, res_g)
 print("got", res_np[0])
+from npsolve import runner
+print("CPU recheck..")
+print(runner(solve, inp4np, ptcshifts[1:], topology))

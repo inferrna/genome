@@ -133,7 +133,7 @@ def genkern2(samples, topology, cmpfunc):
         dm+=1
         s.append(dm*"\t"+"gconns = _gconns+CS+CN*gid;")    #Conns shift and Conns number
         s.append(dm*"\t"+"for(uint {0}=0; {0}<{1}; {0}++)".format(counters[dm], str(a[n]))+"{")
-        s.append((dm+1)*"\t"+"{0}[{1}] = {2}{0}[{1}];".format(lneurons[(n+1)%2], counters[dm], ['_', 'g'][int(n>0)]))
+        s.append((dm+1)*"\t"+"{0}[{1}] = {2}{0}[{1}];".format(lneurons[(n+1)%2], counters[dm], ['g', 'g'][int(n>0)])) #was '_', 'g'
         s.append((dm+1)*"\t"+"{0}[{1}] = 0.0;".format(lneurons[n%2], counters[dm]))
         s.append(dm*"\t"+"}")
         for m in range(n, len(a)-1):
