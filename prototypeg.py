@@ -74,7 +74,7 @@ __kernel void copy_inp(__global float *inpt, __global float *dnr){
 __kernel void replicate_mutate(__global float *_gms, __global float *_tmpgms,\
                                __global uint *srt_idxs, __global float *res_g,\
                                __global float *_rnd, __global uint *_nvarsg, 
-                               __global uint *_shiftsg, __global const uint *hs) {
+                               __global uint *_shiftsg, __constant uint *hs) {
   uint gid = get_global_id(0);
   uint h = hs[gid];                           
   uint i, idx = srt_idxs[h];                  //Sorted indexes of population
