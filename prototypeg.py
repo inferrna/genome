@@ -28,8 +28,8 @@ queue = cl.CommandQueue(ctx)
 
 result = 1.0
 ninpt =  3   #Samples count
-nvarsd = 5   #Count of equations members
-topology = [nvarsd, 4, 3, 2, 1]
+nvarsd = 9   #Count of equations members
+topology = [nvarsd, 7, 5, 3, 1]
 nvarsg = genn.countcns(topology)     #Count of equations members
 print("Total connections is", nvarsg)
 nsamp = ctx.get_info(cl.context_info.DEVICES)[0].max_work_group_size #Genome samples count (current sort limitation to local_size)
@@ -83,12 +83,11 @@ __kernel void replicate_mutate(__global float *_gms, __global float *_tmpgms,\
   __global float *tmpgms = _tmpgms + gid*nvarsg;//+_shiftsg[0];
   //float gml[nvarsg];
   float _cf = res_g[idx];
-  float cf = _cf<0.1?_cf:0.1;
+  float cf = _cf<0.01?_cf:0.01;
   for(i=0; i<_nvarsg[0]; i++)
       tmpgms[i] = gms[i]+rnd[i]*cf;
 
 }
-
 __kernel void savebest(__global float *_gms, __global float *_gm, __global float *res_g, __global float *bestres, __global uint *srt_idxs,\
                        __global uint *_nvarsg, __global uint *_shiftsg){
     uint idx = srt_idxs[0];
@@ -102,17 +101,29 @@ __kernel void savebest(__global float *_gms, __global float *_gm, __global float
 __kernel void loadbest(__global float *_gms, __global float *_gm, __global float *res_g, __global float *bestres, __global uint *srt_idxs,\
                        __global uint *_nvarsg, __global uint *_shiftsg){
     uint idx = srt_idxs[0];
+    uint gid = get_global_id(0);
     float stillbest = res_g[idx];
-    __global float *gms = _gms + idx*nvarsg+_shiftsg[0];
-    if(stillbest>bestres[0]){
-        for(uint i=0; i<_nvarsg[0]; i++){
-            gms[i] = _gm[i];
+    __global float *bestgms = _gms + idx*nvarsg+_shiftsg[0];
+    __global float *currgms = _gms + gid*nvarsg+_shiftsg[0];
+    if(gid==0){
+        if(stillbest>bestres[0]){
+            for(uint i=0; i<_nvarsg[0]; i++){
+                bestgms[i] = _gm[i];
+            }
+        } else {
+            bestres[0] = stillbest;
+            for(uint i=0; i<_nvarsg[0]; i++)
+                _gm[i] = bestgms[i];
         }
-    } else {
-        bestres[0] = stillbest;
-        for(uint i=0; i<_nvarsg[0]; i++)
-            _gm[i] = gms[i];
     }
+    /* For all samples
+    if(stillbest>bestres[0]){
+        for(uint i=0; i<_nvarsg[0]; i++)
+            currgms[i] = _gm[i];
+    } else {
+        for(uint i=0; i<_nvarsg[0]; i++)
+            currgms[i] = bestgms[i];
+    }*/
 }
 
 __kernel void fillgms(__global float *_gms, __global float *_tmpgms, __global uint *_nvarsg, __global uint *_shiftsg) {
@@ -179,30 +190,34 @@ for cy in range(1, 16000):
         if dbg: queue.finish()
         #!!!Need compare with sorting result
         print("k=={0} of {1}. min value is {2}. Load best".format(k, lt, obuf[0]))
-        #Store best at 0 point
-        run.loadbest(queue, (nsamp,), None, gms, gmbg, res_g, brsg, ressg, topconnsg[k], tcshiftsg[k]).wait()
-        if k==0 and obuf[0]<0.000001: break
+        #!!Whom are we load?
+        run.loadbest(queue, (1,), None, gms, gmbg, res_g, brsg, ressg, topconnsg[k], tcshiftsg[k]).wait()
         if dbg:
             cl.enqueue_copy(queue, obuf, brsg)
             print("Loaded best result is {0}".format(obuf[0]))
+        if k==0 and obuf[0]<0.000001:
+            #cl.enqueue_copy(queue, obuf, brsg)
+            #print("Loaded best result is {0}".format(obuf[0]))
+            break
         cl.enqueue_copy(queue, brsg, np.array([np.inf], dtype=np.float32))
         if dbg: queue.finish()
         if dbg: print("Finish")
         if k==0 and obuf[0]<0.000001: break
         ###Cutted run below. Use the best gene stored in gms ###
         if k < (lt-1): kernels["finish"][k].runnet(queue, (ninpt,), None, gms, dnrg, vsrg, res_g)
-
-    ###Generate randoms###
-    printdbg(cy, k, "randsg Starts")
-    randg.randgen(randsg, int(topconns[k]), ptcshifts[k])
-    printdbg(cy, k, "run.replicate_mutate Starts")
-    run.replicate_mutate(queue, (nsamp,), None, gms, tmpgms, ressg, res_g, randsg, topconnsg[k], tcshiftsg[k], hsg)
-    printdbg(cy, k, "run.fillgms Starts")
-    run.fillgms(queue, (nsamp,), None, gms, tmpgms, topconnsg[k], tcshiftsg[k])
-
-    if cy%layertries==0:
         _k+=1
         k = _k%lt; 
+    else:
+        #Need to save best before run
+        #!!!Random fails working results, need fix!!!
+        ###Generate randoms###
+        printdbg(cy, k, "randsg Starts")
+        randg.randgen(randsg, int(topconns[k]), ptcshifts[k])
+        printdbg(cy, k, "run.replicate_mutate Starts")
+        run.replicate_mutate(queue, (nsamp,), None, gms, tmpgms, ressg, res_g, randsg, topconnsg[k], tcshiftsg[k], hsg)
+        printdbg(cy, k, "run.fillgms Starts")
+        run.fillgms(queue, (nsamp,), None, gms, tmpgms, topconnsg[k], tcshiftsg[k])
+
     if cy%512==0:
         randg.reseed()
     if k==0:
@@ -229,28 +244,43 @@ for cy in range(1, 16000):
         cl.enqueue_copy(queue, obuf, brsg)
         print("Saved best result is {0}".format(obuf[0]))
 
+
+
 # Check on CPU with Numpy:
 print(currmin)
 cl.enqueue_copy(queue, ressh, ressg)
 cl.enqueue_copy(queue, arr_np, gms)
-solve = arr4np[ressh[0]]
+solve = arr4np[0]#ressh[0]] - loadbes did job
+cl.enqueue_copy(queue, res_np, res_g)
+curres = res_np[ressh[0]]
 print("\nSolve coeffs\n", solve)
 print("\nInput\n", inp4np)
 #print("\nEquation solved\n", [s.sum() for s in inp4np*solve])
+print("\nCurrent best is\n", curres)
 print("OpenCL recheck..")
 cl.enqueue_copy(queue, gms, solve)
+###0
 run.copy_inp(queue, (nvarsd*ninpt,), None, vsg, dnrg)
 kernels["ordinal"][0].runnet(queue, (1,), None, gms, dnrg, vsrg, res_g)
 cl.enqueue_copy(queue, res_np, res_g).wait()
 print("0 got", res_np[0])
+###1
+run.copy_inp(queue, (nvarsd*ninpt,), None, vsg, dnrg)
 kernels["finish"][0].runnet(queue, (ninpt,), None, gms, dnrg, vsrg, res_g)
 kernels["ordinal"][1].runnet(queue, (1,), None, gms, dnrg, vsrg, res_g)
 cl.enqueue_copy(queue, res_np, res_g).wait()
 print("1 got", res_np[0])
+###2
+#run.copy_inp(queue, (nvarsd*ninpt,), None, vsg, dnrg)
 kernels["finish"][1].runnet(queue, (ninpt,), None, gms, dnrg, vsrg, res_g)
 kernels["ordinal"][2].runnet(queue, (1,), None, gms, dnrg, vsrg, res_g)
 cl.enqueue_copy(queue, res_np, res_g).wait()
 print("2 got", res_np[0])
+###0
+run.copy_inp(queue, (nvarsd*ninpt,), None, vsg, dnrg)
+kernels["ordinal"][0].runnet(queue, (1,), None, gms, dnrg, vsrg, res_g)
+cl.enqueue_copy(queue, res_np, res_g).wait()
+print("0 got", res_np[0])
 
 
 
