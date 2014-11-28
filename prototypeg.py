@@ -27,12 +27,12 @@ ctx = cl.create_some_context()
 queue = cl.CommandQueue(ctx)
 
 result = 1.0
-ninpt =  3   #Samples count
-nvarsd = 9   #Count of equations members
-topology = [nvarsd, 7, 5, 3, 1]
+ninpt =  11   #Samples count
+nvarsd = 11   #Count of equations members
+topology = [nvarsd, 9, 7, 5, 1]
 nvarsg = genn.countcns(topology)     #Count of equations members
 print("Total connections is", nvarsg)
-nsamp = ctx.get_info(cl.context_info.DEVICES)[0].max_work_group_size #Genome samples count (current sort limitation to local_size)
+nsamp = 256#ctx.get_info(cl.context_info.DEVICES)[0].max_work_group_size #Genome samples count (current sort limitation to local_size)
 print("Population count is", nsamp)
 clreducer = cl_reduce(ctx, nsamp)
 #exit()
@@ -48,7 +48,7 @@ vsr = np.array([1.0]*ninpt, dtype=np.float32)
 
 mf = cl.mem_flags
 #Generate indices for cloning
-s = np.concatenate((np.array([0], dtype=np.uint), np.linspace(3, 12, num=nsamp//8).astype(np.uint).cumsum(),))
+s = np.concatenate((np.array([0], dtype=np.uint), np.linspace(8, 4, num=nsamp//4).astype(np.uint).cumsum(),))
 #print(s)
 #exit()
 hs = np.empty(nsamp, dtype=np.uint)     #Distribution of sotred indexes to new genome
@@ -58,6 +58,7 @@ for x in range(0, len(s)-1):
     for sxi in sx:
         if sxi<len(hs): hs[sxi] = x
 
+print("hs == ", hs)
 defines = \
 "#define nvarsd "+str(nvarsd)+"\n"+\
 "#define nvarsg "+str(nvarsg)+"\n"+\
@@ -79,11 +80,11 @@ __kernel void replicate_mutate(__global float *_gms, __global float *_tmpgms,\
   uint h = hs[gid];                           
   uint i, idx = srt_idxs[h];                  //Sorted indexes of population
   __global float *gms = _gms + idx*nvarsg+_shiftsg[0];
-  __global float *rnd = _rnd + gid*nvarsg+_shiftsg[0];
+  __global float *rnd = _rnd + gid*nvarsg;//+_shiftsg[0];
   __global float *tmpgms = _tmpgms + gid*nvarsg;//+_shiftsg[0];
   //float gml[nvarsg];
-  float _cf = res_g[idx];
-  float cf = _cf<0.01?_cf:0.01;
+  float _cf = res_g[idx]/64;
+  float cf = _cf;//<0.01?_cf:0.01;
   for(i=0; i<_nvarsg[0]; i++)
       tmpgms[i] = gms[i]+rnd[i]*cf;
 
@@ -130,7 +131,7 @@ __kernel void fillgms(__global float *_gms, __global float *_tmpgms, __global ui
   uint gid = get_global_id(0);
   __global float *gms = _gms + gid*nvarsg+_shiftsg[0];
   __global float *tmpgms = _tmpgms + gid*nvarsg;//+_shiftsg[0];
-  gms[gid] = tmpgms[gid];
+  //gms[gid] = tmpgms[gid];
   for(uint i=0; i<_nvarsg[0]; i++)
       gms[i] = tmpgms[i];
 }
@@ -174,16 +175,16 @@ res_g = cl.Buffer(ctx, mf.READ_WRITE, res_np.nbytes)    #Device array of equatio
 ressh = np.empty(nsamp).astype(np.uint32)               #Host array of sorted indexes
 ressg = cl.Buffer(ctx, mf.READ_WRITE, ressh.nbytes)     #Device array of sorted indexes
 randsg = cl.Buffer(ctx, mf.READ_WRITE, arr_np.nbytes)   #Array of randoms
-randg = randfloat(ctx, nvarsg*nsamp)
+randg = randfloat(ctx, int(np.max(topconns).astype(np.uint32)*nsamp))
 randg.reseed()
     
 dbg = False
-layertries = 8
+layertries = 128
 
 def printdbg(*args):
     if dbg: print(args)
 
-for cy in range(1, 16000):    
+for cy in range(1, layertries*10000):    
     if cy%layertries==0:
         clreducer.reduce_min(queue, res_g, nsamp, o_min, o_lid)
         cl.enqueue_copy(queue, obuf, o_min)
@@ -212,7 +213,7 @@ for cy in range(1, 16000):
         #!!!Random fails working results, need fix!!!
         ###Generate randoms###
         printdbg(cy, k, "randsg Starts")
-        randg.randgen(randsg, int(topconns[k]), ptcshifts[k])
+        randg.randgen(randsg, int(topconns[k]*nsamp))
         printdbg(cy, k, "run.replicate_mutate Starts")
         run.replicate_mutate(queue, (nsamp,), None, gms, tmpgms, ressg, res_g, randsg, topconnsg[k], tcshiftsg[k], hsg)
         printdbg(cy, k, "run.fillgms Starts")
@@ -239,7 +240,8 @@ for cy in range(1, 16000):
     printdbg(cy, k, "clreducer.sort Starts")
     clreducer.sort(queue, nsamp, res_g, ressg)
     #if cy%layertries!=0: 
-    run.savebest(queue, (1,), None, gms, gmbg, res_g, brsg, ressg, topconnsg[k], tcshiftsg[k])
+    run.loadbest(queue, (1,), None, gms, gmbg, res_g, brsg, ressg, topconnsg[k], tcshiftsg[k]).wait()
+    #run.savebest(queue, (1,), None, gms, gmbg, res_g, brsg, ressg, topconnsg[k], tcshiftsg[k])
     if dbg:
         cl.enqueue_copy(queue, obuf, brsg)
         print("Saved best result is {0}".format(obuf[0]))

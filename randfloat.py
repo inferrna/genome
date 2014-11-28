@@ -36,8 +36,8 @@ class randfloat():
 
         }
         """).build()
-    def randgen(self, o_g, tcsz, off):
-        self.prg.rands(self.queue, (self.sz,), None, self.a_g, o_g, global_offset=(0,))
+    def randgen(self, o_g, tcsz):
+        self.prg.rands(self.queue, (tcsz,), None, self.a_g, o_g, global_offset=(0,))
     def reseed(self):
         self.a_np = np.random.randint(low=1, high=2147483647, size=self.sz).astype(np.uint32)
         cl.enqueue_copy(self.queue, self.a_g, self.a_np)
