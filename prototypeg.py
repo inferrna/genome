@@ -29,7 +29,7 @@ queue = cl.CommandQueue(ctx)
 result = 1.0
 ninpt =  11   #Samples count ( 60000 for set )
 nvarsd = 11   #Count of equations members ( 28*28 for set)
-topology = [nvarsd, 9, 7, 5, 1]
+topology = [nvarsd, 9, 7, 5, 3, 1]
 nvarsg = genn.countcns(topology)     #Count of equations members
 print("Total connections is", nvarsg)
 nsamp = 256#ctx.get_info(cl.context_info.DEVICES)[0].max_work_group_size #Genome samples count (current sort limitation to local_size)
@@ -42,7 +42,7 @@ arr_np = np.random.rand(nvarsg*nsamp).astype(np.float32) - np.random.rand(nvarsg
 arr4np = arr_np.reshape(nsamp, nvarsg)
 #Random init equation members
 #inp_np = np.fromfile("train-images-idx3-ubyte.idx", dtype=np.ubyte)[16:].astype(np.float32)
-inp_np = inp_np/inp_np.max()
+#inp_np = inp_np/inp_np.max()
 inp_np = np.random.rand(nvarsd*ninpt).astype(np.float32) - np.random.rand(nvarsd*ninpt).astype(np.float32)
 inp4np = inp_np.reshape(ninpt, nvarsd)
 #Results
@@ -87,10 +87,10 @@ __kernel void replicate_mutate(__global float *_gms, __global float *_tmpgms,\
   __global float *rnd = _rnd + gid*nvarsg;//+_shiftsg[0];
   __global float *tmpgms = _tmpgms + gid*nvarsg;//+_shiftsg[0];
   //float gml[nvarsg];
-  float _cf = res_g[idx]/64;
-  float cf = _cf;//<0.01?_cf:0.01;
+  float _cf = res_g[idx];
+  float cf = clamp((float)_cf, (float)0.000001, (float)1.0);
   for(i=0; i<_nvarsg[0]; i++)
-      tmpgms[i] = gms[i]+rnd[i]*cf;
+      tmpgms[i] = mad((float)rnd[i], (float)cf, (float)1.0)*gms[i];
 
 }
 __kernel void savebest(__global float *_gms, __global float *_gm, __global float *res_g, __global float *bestres, __global uint *srt_idxs,\
@@ -121,7 +121,7 @@ __kernel void loadbest(__global float *_gms, __global float *_gm, __global float
                 _gm[i] = bestgms[i];
         }
     }
-    /* For all samples
+    /* For all samples 
     if(stillbest>bestres[0]){
         for(uint i=0; i<_nvarsg[0]; i++)
             currgms[i] = _gm[i];
@@ -244,8 +244,8 @@ for cy in range(1, layertries*10000):
     printdbg(cy, k, "clreducer.sort Starts")
     clreducer.sort(queue, nsamp, res_g, ressg)
     #if cy%layertries!=0: 
-    run.loadbest(queue, (1,), None, gms, gmbg, res_g, brsg, ressg, topconnsg[k], tcshiftsg[k]).wait()
-    #run.savebest(queue, (1,), None, gms, gmbg, res_g, brsg, ressg, topconnsg[k], tcshiftsg[k])
+    #run.loadbest(queue, (1,), None, gms, gmbg, res_g, brsg, ressg, topconnsg[k], tcshiftsg[k]).wait()
+    run.savebest(queue, (1,), None, gms, gmbg, res_g, brsg, ressg, topconnsg[k], tcshiftsg[k])
     if dbg:
         cl.enqueue_copy(queue, obuf, brsg)
         print("Saved best result is {0}".format(obuf[0]))
