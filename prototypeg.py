@@ -42,7 +42,7 @@ arr_np = np.random.rand(nvarsg*nsamp).astype(np.float32) - np.random.rand(nvarsg
 arr4np = arr_np.reshape(nsamp, nvarsg)
 #Random init equation members
 #inp_np = np.fromfile("train-images-idx3-ubyte.idx", dtype=np.ubyte)[16:].astype(np.float32)
-inp_np = inp_np/inp_np.max()
+#inp_np = inp_np/inp_np.max()
 inp_np = np.random.rand(nvarsd*ninpt).astype(np.float32) - np.random.rand(nvarsd*ninpt).astype(np.float32)
 inp4np = inp_np.reshape(ninpt, nvarsd)
 #Results
@@ -88,7 +88,7 @@ __kernel void replicate_mutate(__global float *_gms, __global float *_tmpgms,\
   __global float *tmpgms = _tmpgms + gid*nvarsg;//+_shiftsg[0];
   //float gml[nvarsg];
   float _cf = res_g[idx]/64;
-  float cf = _cf;//<0.01?_cf:0.01;
+  float cf = clamp((float)_cf, (float)0.0, (float)0.01);
   for(i=0; i<_nvarsg[0]; i++)
       tmpgms[i] = gms[i]+rnd[i]*cf;
 

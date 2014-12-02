@@ -120,8 +120,8 @@ def genkern2(samples, topology, cmpfunc):
         s.append("__kernel void "+kname+"(__global float *_gconns, __global float *_"+\
                  lneurons[(n+1)%2]+", __global float *gtargets, __global float *results){")
         s.append(dm*"\t"+"uint gid = get_global_id(0);")
-        s.append(dm*"\t"+"float dnr[{0}]".format(a[n])+";// = {"+", ".join(["0.0"])+"};")
-        s.append(dm*"\t"+"float lnr[{0}]".format(a[n])+";// = {"+", ".join(["0.0"])+"};")
+        s.append(dm*"\t"+"float dnr[{0}]".format(max(a[n:]))+";// = {"+", ".join(["0.0"])+"};")
+        s.append(dm*"\t"+"float lnr[{0}]".format(max(a[n:]))+";// = {"+", ".join(["0.0"])+"};")
         s.append(dm*"\t"+"__global float *g{0} = _{0} + gid*DC;".format(lneurons[(n+1)%2])) #Data Count
         s.append(dm*"\t"+"__global float *gconns;")    #Conns shift and Conns number
         s.append(dm*"\t"+"float result = 0.0;")
