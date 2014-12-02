@@ -99,8 +99,8 @@ __kernel void savebest(__global float *_gms, __global float *_gm, __global float
     uint idx = srt_idxs[0];
     if(res_g[idx] < bestres[0]){
         bestres[0] = res_g[idx];
-        __global float *gms = _gms + idx*nvarsg+_shiftsg[0];
-        for(uint i=0; i<_nvarsg[0]; i++)
+        __global float *gms = _gms + idx*nvarsg;
+        for(uint i=0; i<nvarsg; i++)
             _gm[i] = gms[i];
     }
 }
@@ -109,16 +109,16 @@ __kernel void loadbest(__global float *_gms, __global float *_gm, __global float
     uint idx = srt_idxs[0];
     uint gid = get_global_id(0);
     float stillbest = res_g[idx];
-    __global float *bestgms = _gms + idx*nvarsg+_shiftsg[0];
+    __global float *bestgms = _gms + idx*nvarsg;
     __global float *currgms = _gms + gid*nvarsg+_shiftsg[0];
     if(gid==0){
         if(stillbest>bestres[0]){
-            for(uint i=0; i<_nvarsg[0]; i++){
+            for(uint i=0; i<nvarsg; i++){
                 bestgms[i] = _gm[i];
             }
         } else {
             bestres[0] = stillbest;
-            for(uint i=0; i<_nvarsg[0]; i++)
+            for(uint i=0; i<nvarsg; i++)
                 _gm[i] = bestgms[i];
         }
     }
