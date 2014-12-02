@@ -27,9 +27,9 @@ ctx = cl.create_some_context()
 queue = cl.CommandQueue(ctx)
 
 result = 1.0
-ninpt =  11   #Samples count ( 60000 for set )
+ninpt =  3   #Samples count ( 60000 for set )
 nvarsd = 11   #Count of equations members ( 28*28 for set)
-topology = [nvarsd, 9, 7, 5, 3, 1]
+topology = [nvarsd, 29, 13, 3, 1]
 nvarsg = genn.countcns(topology)     #Count of equations members
 print("Total connections is", nvarsg)
 nsamp = 256#ctx.get_info(cl.context_info.DEVICES)[0].max_work_group_size #Genome samples count (current sort limitation to local_size)
@@ -38,7 +38,7 @@ clreducer = cl_reduce(ctx, nsamp)
 #exit()
 
 #Random init genome
-arr_np = np.random.rand(nvarsg*nsamp).astype(np.float32) - np.random.rand(nvarsg*nsamp).astype(np.float32)
+arr_np = (np.random.rand(nvarsg*nsamp).astype(np.float32) - np.random.rand(nvarsg*nsamp).astype(np.float32))*0.00001
 arr4np = arr_np.reshape(nsamp, nvarsg)
 #Random init equation members
 #inp_np = np.fromfile("train-images-idx3-ubyte.idx", dtype=np.ubyte)[16:].astype(np.float32)
@@ -88,10 +88,11 @@ __kernel void replicate_mutate(__global float *_gms, __global float *_tmpgms,\
   __global float *tmpgms = _tmpgms + gid*nvarsg;//+_shiftsg[0];
   //float gml[nvarsg];
   float _cf = res_g[idx];
-  float cf = clamp((float)_cf, (float)0.000001, (float)1.0);
-  for(i=0; i<_nvarsg[0]; i++)
-      tmpgms[i] = mad((float)rnd[i], (float)cf, (float)1.0)*gms[i];
-
+  float cf = clamp((float)_cf, (float)0.000001, (float)10.0);
+  for(i=0; i<_nvarsg[0]; i++){
+      _cf = mad((float)rnd[i], (float)cf, (float)1.0)*gms[i];
+      tmpgms[i] = clamp((float)_cf, (float)0.0001, (float)100.0); 
+    }
 }
 __kernel void savebest(__global float *_gms, __global float *_gm, __global float *res_g, __global float *bestres, __global uint *srt_idxs,\
                        __global uint *_nvarsg, __global uint *_shiftsg){
