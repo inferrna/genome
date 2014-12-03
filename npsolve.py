@@ -1,6 +1,6 @@
 import numpy as np
-def runner(conns, samples, sconns, topology):
-    nrs = [np.empty(topology[0], dtype=np.float32), np.empty(topology[0], dtype=np.float32)]
+def runner(conns, samples, results, sconns, topology):
+    nrs = [np.empty(max(topology), dtype=np.float32), np.empty(max(topology[0]), dtype=np.float32)]
     lconns = np.split(conns, sconns, axis=0)
     result = 0.0
     for i in range(0, len(samples)):
@@ -25,6 +25,7 @@ def runner(conns, samples, sconns, topology):
                             print("Len(lconns[lc]) is", len(lconns[lc]), "index is", n*ncn+c)
                             print(sconns)
                         exit()
-
-        result += abs(lnr[0]-1.0)
+        result += abs(lnr[0]-results[i])
+    if len(samples)<2:
+        print("Result is", lnr[0])
     return result

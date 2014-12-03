@@ -12,6 +12,8 @@ from reducecl import cl_reduce
 from randfloat import randfloat
 import genn
 import pprint
+from idxread import idxs
+from npsolve import runner
 pp = pprint.PrettyPrinter(depth=5)
 
 def dec2str(num):
@@ -26,13 +28,16 @@ print( cl.get_cl_header_version() )
 ctx = cl.create_some_context()
 queue = cl.CommandQueue(ctx)
 
+set = 'random'
+traindata = idxs("train-images-idx3-ubyte.idx", "train-labels-idx1-ubyte.idx")
+testdata  = idxs("t10k-images-idx3-ubyte.idx", "t10k-labels-idx1-ubyte.idx")
 result = 1.0
-ninpt =  11   #Samples count ( 60000 for set )
-nvarsd = 11   #Count of equations members ( 28*28 for set)
-topology = [nvarsd, 9, 7, 5, 1]
+ninpt =  traindata.count                 #Samples count ( 60000 for set )
+nvarsd = traindata.rows*traindata.cols   #Count of equations members ( 28*28 for set)
+topology = [nvarsd, 1024, 5, 1]
 nvarsg = genn.countcns(topology)     #Count of equations members
 print("Total connections is", nvarsg)
-nsamp = 256#ctx.get_info(cl.context_info.DEVICES)[0].max_work_group_size #Genome samples count (current sort limitation to local_size)
+nsamp = 64#ctx.get_info(cl.context_info.DEVICES)[0].max_work_group_size #Genome samples count (current sort limitation to local_size)
 print("Population count is", nsamp)
 clreducer = cl_reduce(ctx, nsamp)
 #exit()
@@ -41,14 +46,15 @@ clreducer = cl_reduce(ctx, nsamp)
 arr_np = np.random.rand(nvarsg*nsamp).astype(np.float32) - np.random.rand(nvarsg*nsamp).astype(np.float32)
 arr4np = arr_np.reshape(nsamp, nvarsg)
 #Random init equation members
-#inp_np = np.fromfile("train-images-idx3-ubyte.idx", dtype=np.ubyte)[16:].astype(np.float32)
-#inp_np = inp_np/inp_np.max()
-inp_np = np.random.rand(nvarsd*ninpt).astype(np.float32) - np.random.rand(nvarsd*ninpt).astype(np.float32)
+inp_np = traindata.bindata.astype(np.float32)
+inp_np = inp_np/inp_np.max()
+#inp_np = np.random.rand(nvarsd*ninpt).astype(np.float32) - np.random.rand(nvarsd*ninpt).astype(np.float32)
 inp4np = inp_np.reshape(ninpt, nvarsd)
+
 #Results
-#vsr = np.fromfile("train-labels-idx1-ubyte.idx", dtype=np.ubyte)[8:].astype(np.float32)
-#vsr = vsr/vsr.max()
-vsr = np.array([1.0]*ninpt, dtype=np.float32)
+vsr = traindata.labels.astype(np.float32)
+vsr = vsr/vsr.max()
+#vsr = np.array([1.0]*ninpt, dtype=np.float32)
 
 mf = cl.mem_flags
 #Generate indices for cloning
@@ -90,7 +96,7 @@ __kernel void replicate_mutate(__global float *_gms, __global float *_tmpgms,\
   float _cf = res_g[idx]/64;
   float cf = clamp((float)_cf, (float)0.0, (float)0.01);
   for(i=0; i<_nvarsg[0]; i++)
-      tmpgms[i] = gms[i]+rnd[i]*cf;
+      tmpgms[i] = clamp((float)(gms[i]+rnd[i]*cf), (float)-1.0, (float)1.0);
 
 }
 __kernel void savebest(__global float *_gms, __global float *_gm, __global float *res_g, __global float *bestres, __global uint *srt_idxs,\
@@ -121,14 +127,14 @@ __kernel void loadbest(__global float *_gms, __global float *_gm, __global float
                 _gm[i] = bestgms[i];
         }
     }
-    /* For all samples
+    //For all samples
     if(stillbest>bestres[0]){
         for(uint i=0; i<_nvarsg[0]; i++)
             currgms[i] = _gm[i];
     } else {
         for(uint i=0; i<_nvarsg[0]; i++)
             currgms[i] = bestgms[i];
-    }*/
+    }
 }
 
 __kernel void fillgms(__global float *_gms, __global float *_tmpgms, __global uint *_nvarsg, __global uint *_shiftsg) {
@@ -158,7 +164,7 @@ print("Layer-to-layer conns is", topconns)
 print("Shifts for a conns is", tcshifts)
 topconnsg = [cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=np.array([ma], dtype=np.uint32)) for ma in topconns]
 tcshiftsg = [cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=np.array([ma], dtype=np.uint32)) for ma in tcshifts]
-obuf = np.array([99999.99999]).astype(np.float32) #Array for an best result
+obuf = np.array([np.inf]).astype(np.float32) #Array for an best result
 olid = np.empty(1).astype(np.uint32)
 o_med = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
 o_min = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
@@ -183,7 +189,7 @@ randg = randfloat(ctx, int(np.max(topconns).astype(np.uint32)*nsamp))
 randg.reseed()
     
 dbg = False
-layertries = 128
+layertries = 4
 
 def printdbg(*args):
     if dbg: print(args)
@@ -196,18 +202,25 @@ for cy in range(1, layertries*10000):
         #!!!Need compare with sorting result
         print("k=={0} of {1}. min value is {2}. Load best".format(k, lt, obuf[0]))
         #!!Whom are we load?
-        run.loadbest(queue, (1,), None, gms, gmbg, res_g, brsg, ressg, topconnsg[k], tcshiftsg[k]).wait()
+        run.loadbest(queue, (nsamp,), None, gms, gmbg, res_g, brsg, ressg, topconnsg[k], tcshiftsg[k]).wait()
         if dbg:
             cl.enqueue_copy(queue, obuf, brsg)
             print("Loaded best result is {0}".format(obuf[0]))
-        if k==0 and obuf[0]<0.000001:
-            #cl.enqueue_copy(queue, obuf, brsg)
-            #print("Loaded best result is {0}".format(obuf[0]))
-            break
         cl.enqueue_copy(queue, brsg, np.array([np.inf], dtype=np.float32))
         if dbg: queue.finish()
         if dbg: print("Finish")
-        if k==0 and obuf[0]<0.000001: break
+        if k==0:
+            if obuf[0]<0.000001: break
+            cl.enqueue_copy(queue, arr_np, gms)
+            solve = arr4np[0]#ressh[0]] - loadbes did job
+            idx = random.randint(0, testdata.count)
+            tstimg = [testdata.binimages[idx].reshape(nvarsd).astype(np.uint32)]
+            resval = testdata.labels[idx]
+            print("Check for", resval)
+            print(runner(solve, [tstimg], [resval], ptcshifts[1:], topology))
+            #image = testdata.getimage(idx)
+            #image.save(str(resval)+".png")
+
         ###Cutted run below. Use the best gene stored in gms ###
         if k < (lt-1): kernels["finish"][k].runnet(queue, (ninpt,), None, gms, dnrg, vsrg, res_g)
         _k+=1
@@ -257,6 +270,7 @@ print(currmin)
 cl.enqueue_copy(queue, ressh, ressg)
 cl.enqueue_copy(queue, arr_np, gms)
 solve = arr4np[0]#ressh[0]] - loadbes did job
+#print(runner(solve, inp4np, vsr, ptcshifts[1:], topology))
 cl.enqueue_copy(queue, res_np, res_g)
 curres = res_np[ressh[0]]
 print("\nSolve coeffs\n", solve)
@@ -290,6 +304,6 @@ print("0 got", res_np[0])
 
 
 
-from npsolve import runner
 print("CPU recheck..")
-print(runner(solve, inp4np, ptcshifts[1:], topology))
+print(runner(solve, inp4np, vsr, ptcshifts[1:], topology))
+
