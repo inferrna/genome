@@ -1,6 +1,6 @@
 import numpy as np
 def runner(conns, samples, results, sconns, topology):
-    nrs = [np.empty(max(topology), dtype=np.float32), np.empty(max(topology[0]), dtype=np.float32)]
+    nrs = [np.empty(max(topology), dtype=np.float32), np.empty(max(topology), dtype=np.float32)]
     lconns = np.split(conns, sconns, axis=0)
     result = 0.0
     for i in range(0, len(samples)):
