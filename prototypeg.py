@@ -170,6 +170,12 @@ o_med = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
 o_min = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
 o_lid = cl.Buffer(ctx, mf.WRITE_ONLY, size=olid.nbytes)
 gmbg = cl.Buffer(ctx, mf.READ_WRITE, size=nvarsg*obuf.nbytes)
+sumsg = cl.Buffer(ctx, mf.READ_WRITE, size=ninpt*nsamp*4)
+
+
+####### Work here!! ################################
+
+
 brsg = cl.Buffer(ctx, mf.READ_WRITE, size=obuf.nbytes)
 cl.enqueue_copy(queue, brsg, np.array([np.inf], dtype=np.float32))
 vsg = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=inp_np)   #Device array of input data
