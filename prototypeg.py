@@ -39,7 +39,7 @@ nvarsg = genn.countcns(topology)     #Count of equations members
 print("Total connections is", nvarsg)
 nsamp = 64#ctx.get_info(cl.context_info.DEVICES)[0].max_work_group_size #Genome samples count (current sort limitation to local_size)
 print("Population count is", nsamp)
-clreducer = cl_reduce(ctx, nsamp)
+clreducer = cl_reduce(ctx, ninpt)
 #exit()
 
 #Random init genome
@@ -170,8 +170,10 @@ o_med = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
 o_min = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
 o_lid = cl.Buffer(ctx, mf.WRITE_ONLY, size=olid.nbytes)
 gmbg = cl.Buffer(ctx, mf.READ_WRITE, size=nvarsg*obuf.nbytes)
-sumsg = cl.Buffer(ctx, mf.READ_WRITE, size=ninpt*nsamp*4)
 
+tosumr = pow(2, ceil(log2(ninpt)))
+sumsg = cl.Buffer(ctx, mf.READ_WRITE, size=tosumr*nsamp*4)
+reducer.reduce_sum(queue, sumsg, tosumr*nsamp, res_g, nsamp) #For example. Needs to be moved out.
 
 ####### Work here!! ################################
 

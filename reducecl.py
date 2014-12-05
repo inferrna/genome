@@ -9,18 +9,18 @@ class cl_reduce():
         self.ctx = ctx
         self.n_threads = ctx.get_info(cl.context_info.DEVICES)[0].max_work_group_size
         #Init parents with indexes
-        parentsh   = np.arange(start=0, stop=numitems, dtype=np.ushort)
-        self.parentsg  = cl.Buffer(ctx, mf.WRITE_ONLY | mf.COPY_HOST_PTR, hostbuf=parentsh)
-        self.gparentsg = cl.Buffer(ctx, mf.WRITE_ONLY | mf.COPY_HOST_PTR, hostbuf=parentsh)
+        #parentsh   = np.arange(start=0, stop=numitems, dtype=np.ushort)
+        #self.parentsg  = cl.Buffer(ctx, mf.WRITE_ONLY | mf.COPY_HOST_PTR, hostbuf=parentsh)
+        #self.gparentsg = cl.Buffer(ctx, mf.WRITE_ONLY | mf.COPY_HOST_PTR, hostbuf=parentsh)
         totpow = ceil(log2(numitems))           #Total max power of 2 to fit all items
         grouppow = ceil(log2(self.n_threads))   #Workgroup size as power of 2
         self.fstsumcount = totpow//grouppow
         endcnt = 64#totpow%grouppow
         self.r_buf = cl.Buffer(self.ctx, mf.READ_WRITE, size=4*pow(2, totpow-grouppow)) #For first store
-        print("self.fstsumcount==", self.fstsumcount)
-        print("totpow==", totpow)
-        print("grouppow==", grouppow)
-        print("endcnt==", endcnt)
+        #print("self.fstsumcount==", self.fstsumcount)
+        #print("totpow==", totpow)
+        #print("grouppow==", grouppow)
+        #print("endcnt==", endcnt)
         self.prgsm_fst = cl.Program(ctx, """
         __kernel void reduce(__global float *a,
         __global float *r,
