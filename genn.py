@@ -117,6 +117,7 @@ def genkern2(samples, topology, cmpfunc):
     for n in range(0, len(a)-1):
         s = []
         kname = "runnet"
+        s.append("#define samples {0}".format(samples))
         s.append("__kernel void "+kname+"(__global float *_gconns, __global float *_"+\
                  lneurons[(n+1)%2]+", __global float *gtargets, __global float *results){")
         s.append(dm*"\t"+"uint gid = get_global_id(0);")
@@ -171,7 +172,7 @@ def genkern2(samples, topology, cmpfunc):
         s.append((dm+1)*"\t"+"{0}[{1}] = 0.0;".format(lneurons[m%2], counters[dm])) #"Samples" loop
         dm-=1
         s.append((dm)*"\t"+"}//\"Samples\" loop "+str(n))
-        s.append((dm)*"\t"+"results[gid] = result;\n}") #Kernel end
+        s.append((dm)*"\t"+"results[gid] = result/samples;\n}") #Kernel end
         s = ["#define SC {0}".format(samples), "#define DC 0 //Step for prev layer data by each gen".format(dcs[n]), "#define CS {0}".format(sconns[n]), "#define CN {0}".format(conns.sum())] + s
         se = ["#define SC 1", "#define DC {0} //Step for input data".format(a[0]), "#define CS {0}".format(sconns[n]), "#define CN 0"]+se
         ss.append(cmpfunc("\n".join(s)))

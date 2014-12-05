@@ -1,6 +1,7 @@
 import pyopencl as cl
 import numpy as np
 from pyopencl.algorithm import RadixSort
+from math import log2, ceil
 
 mf = cl.mem_flags
 class cl_reduce():
@@ -11,6 +12,15 @@ class cl_reduce():
         parentsh   = np.arange(start=0, stop=numitems, dtype=np.ushort)
         self.parentsg  = cl.Buffer(ctx, mf.WRITE_ONLY | mf.COPY_HOST_PTR, hostbuf=parentsh)
         self.gparentsg = cl.Buffer(ctx, mf.WRITE_ONLY | mf.COPY_HOST_PTR, hostbuf=parentsh)
+        totpow = ceil(log2(numitems))           #Total max power of 2 to fit all items
+        grouppow = ceil(log2(self.n_threads))   #Workgroup size as power of 2
+        self.fstsumcount = totpow//grouppow
+        endcnt = 64#totpow%grouppow
+        self.r_buf = cl.Buffer(self.ctx, mf.READ_WRITE, size=4*pow(2, totpow-grouppow)) #For first store
+        print("self.fstsumcount==", self.fstsumcount)
+        print("totpow==", totpow)
+        print("grouppow==", grouppow)
+        print("endcnt==", endcnt)
         self.prgsm_fst = cl.Program(ctx, """
         __kernel void reduce(__global float *a,
         __global float *r,
@@ -19,10 +29,10 @@ class cl_reduce():
             uint gid = get_global_id(0);
             uint wid = get_group_id(0);
             uint lid = get_local_id(0);
-            uint gs = get_local_size(0);
+            uint ls = get_local_size(0);
             b[lid] = a[gid];
             barrier(CLK_LOCAL_MEM_FENCE);
-            for(uint s = gs/2; s > 0; s >>= 1) {
+            for(uint s = ls/2; s > 0; s >>= 1) {
                 if(lid < s) {
                     b[lid] += b[lid+s];
                 }
@@ -32,23 +42,23 @@ class cl_reduce():
         }
         """).build()
         self.prgsm_med = cl.Program(ctx, """
+        #define endcnt """+str(endcnt)+"""
         __kernel void reduce(__global float *a,
         __global float *r,
         __local float *b)
         {
             uint gid = get_global_id(0);
-            uint wid = get_group_id(0);
-            uint lid = get_local_id(0);
-            uint gs = get_local_size(0);
-            b[lid] = a[gid];
+            uint wid = gid/endcnt;
+            uint lid = gid%endcnt; //Same as modulo endcnt
+            b[gid] = 0.0;//a[gid];
             barrier(CLK_LOCAL_MEM_FENCE);
-            for(uint s = gs/2; s > 0; s >>= 1) {
+            for(uint s = endcnt/2; s > 0; s >>= 1) {
                 if(lid < s) {
-                    b[lid] += b[lid+s];
+                    b[gid] += b[gid+s];
                 }
                 barrier(CLK_LOCAL_MEM_FENCE);
             }
-            if(lid == 0) r[wid] = b[lid]/"""+str(numitems)+""";
+            if(lid == 0) r[wid] = b[gid];
         }
         """).build()
 #Minimal
@@ -63,11 +73,11 @@ class cl_reduce():
             uint gid = get_global_id(0);
             uint wid = get_group_id(0);
             uint lid = get_local_id(0);
-            uint gs = get_local_size(0);
+            uint ls = get_local_size(0);
             b[lid] = a[gid];
             c[lid] = gid;
             barrier(CLK_LOCAL_MEM_FENCE);
-            for(uint s = gs/2; s > 0; s >>= 1) {
+            for(uint s = ls/2; s > 0; s >>= 1) {
                 if(lid < s && b[lid] > b[lid+s]) {
                     b[lid] = b[lid+s];
                     c[lid] = c[lid+s];
@@ -91,11 +101,11 @@ class cl_reduce():
             uint gid = get_global_id(0);
             uint wid = get_group_id(0);
             uint lid = get_local_id(0);
-            uint gs = get_local_size(0);
+            uint ls = get_local_size(0);
             b[lid] = a[gid];
             c[lid] = gid;
             barrier(CLK_LOCAL_MEM_FENCE);
-            for(uint s = gs/2; s > 0; s >>= 1) {
+            for(uint s = ls/2; s > 0; s >>= 1) {
                 if(lid < s && b[lid] > b[lid+s]) {
                     b[lid] = b[lid+s];
                     c[lid] = c[lid+s];
@@ -151,16 +161,22 @@ class cl_reduce():
               out[i] = idxs[i];
             }
         """).build()
-    def reduce_sum(self, queue, a_buf, N, o_buf):
-        r = np.empty(self.n_threads).astype(np.float32)
-        r_buf = cl.Buffer(self.ctx, mf.READ_WRITE, size=r.nbytes)
+    def reduce_sum(self, queue, a_buf, N, o_buf, cnt=1):
         loc_buf = cl.LocalMemory(4*self.n_threads)
         #print("N==", N, "n_threads==", self.n_threads)
-        evt = self.prgsm_fst.reduce(queue, (N,), (self.n_threads,), a_buf, r_buf, loc_buf)
-        evt.wait()
-        #print(evt.profile.end - evt.profile.start)
-        n_threads = N//self.n_threads
-        evt = self.prgsm_med.reduce(queue, (n_threads,), (n_threads,), r_buf, o_buf, loc_buf)
+        buffers = [a_buf, self.r_buf]
+        print("N==", N)
+        i = 0
+        while N>self.n_threads:
+            evt = self.prgsm_fst.reduce(queue, (N,), (self.n_threads,), buffers[i%2], buffers[(i+1)%2], loc_buf)
+            N//=self.n_threads
+            i+=1
+            print("N==", N)
+            evt.wait()
+        #arr_np = np.empty(N).astype(np.float32)
+        #cl.enqueue_copy(queue, arr_np, buffers[self.fstsumcount%2])
+        #print("1d cl totsum==", arr_np.sum())
+        evt = self.prgsm_fst.reduce(queue, (N,), (N//cnt,), buffers[i%2], o_buf, loc_buf)
         evt.wait()
         #print(evt.profile.end - evt.profile.start)
     def reduce_min(self, queue, a_buf, N, o_buf, o_lid):

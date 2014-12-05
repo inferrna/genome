@@ -34,7 +34,7 @@ testdata  = idxs("t10k-images-idx3-ubyte.idx", "t10k-labels-idx1-ubyte.idx")
 result = 1.0
 ninpt =  traindata.count                 #Samples count ( 60000 for set )
 nvarsd = traindata.rows*traindata.cols   #Count of equations members ( 28*28 for set)
-topology = [nvarsd, 1024, 5, 1]
+topology = [nvarsd, 9, 8, 7, 6, 5, 4, 3, 1]
 nvarsg = genn.countcns(topology)     #Count of equations members
 print("Total connections is", nvarsg)
 nsamp = 64#ctx.get_info(cl.context_info.DEVICES)[0].max_work_group_size #Genome samples count (current sort limitation to local_size)
@@ -93,8 +93,8 @@ __kernel void replicate_mutate(__global float *_gms, __global float *_tmpgms,\
   __global float *rnd = _rnd + gid*nvarsg;//+_shiftsg[0];
   __global float *tmpgms = _tmpgms + gid*nvarsg;//+_shiftsg[0];
   //float gml[nvarsg];
-  float _cf = res_g[idx]/64;
-  float cf = clamp((float)_cf, (float)0.0, (float)0.01);
+  float _cf = res_g[idx]/8;
+  float cf = clamp((float)_cf, (float)0.0, (float)0.1);
   for(i=0; i<_nvarsg[0]; i++)
       tmpgms[i] = clamp((float)(gms[i]+rnd[i]*cf), (float)-1.0, (float)1.0);
 

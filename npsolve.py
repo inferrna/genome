@@ -5,7 +5,7 @@ def runner(conns, samples, results, sconns, topology):
     result = 0.0
     for i in range(0, len(samples)):
         dnr = nrs[0]
-        np.copyto(dnr, samples[i])
+        np.copyto(dnr, samples[i][:len(dnr)])
         #lcc - layer conns count per neuron, lnc - layer neurons count
         for lc in range(0, len(topology)-1):
             dnr = nrs[lc%2]
