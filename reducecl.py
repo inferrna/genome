@@ -180,7 +180,7 @@ class cl_reduce():
         #arr_np = np.empty(N).astype(np.float32)
         #cl.enqueue_copy(queue, arr_np, buffers[self.fstsumcount%2])
         #print("1d cl totsum==", arr_np.sum())
-        evt = self.prgsm_fst.reduce(queue, (N,), (max(1, N//cnt),), buffers[i%2], o_buf, loc_buf)
+        evt = self.prgsm_fst.reduce(queue, (N,), (max(0, N//cnt),), buffers[i%2], o_buf, loc_buf)
         evt.wait()
         #print(evt.profile.end - evt.profile.start)
     def reduce_min(self, queue, a_buf, N, o_buf, o_lid):
