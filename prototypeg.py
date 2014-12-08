@@ -14,8 +14,10 @@ import genn
 import pprint
 from idxread import idxs
 from npsolve import runner
-from math import ceil
+from math import ceil, log2
+
 pp = pprint.PrettyPrinter(depth=5)
+mf = cl.mem_flags
 
 def dec2str(num):
     k = []
@@ -35,12 +37,19 @@ testdata  = idxs("t10k-images-idx3-ubyte.idx", "t10k-labels-idx1-ubyte.idx")
 result = 1.0
 ninpt =  traindata.count                 #Samples count ( 60000 for set )
 nvarsd = traindata.rows*traindata.cols   #Count of equations members ( 28*28 for set)
-topology = [nvarsd, 9, 8, 7, 6, 5, 4, 3, 1]
+topology = [nvarsd, 5, 4, 3, 1]
 nvarsg = genn.countcns(topology)     #Count of equations members
 print("Total connections is", nvarsg)
 nsamp = 64#ctx.get_info(cl.context_info.DEVICES)[0].max_work_group_size #Genome samples count (current sort limitation to local_size)
 print("Population count is", nsamp)
-clreducer = cl_reduce(ctx, ninpt)
+
+tosumr = pow(2, ceil(log2(ninpt)))
+sums = np.empty(tosumr*nsamp).astype(np.float32)
+sumsg = cl.Buffer(ctx, mf.READ_WRITE, size=tosumr*nsamp*4)
+
+####### Work here!! ################################
+
+clreducer = cl_reduce(ctx, tosumr*nsamp)
 #exit()
 
 #Random init genome
@@ -57,7 +66,6 @@ vsr = traindata.labels.astype(np.float32)
 vsr = vsr/vsr.max()
 #vsr = np.array([1.0]*ninpt, dtype=np.float32)
 
-mf = cl.mem_flags
 #Generate indices for cloning
 s = np.concatenate((np.array([0], dtype=np.uint), np.linspace(8, 4, num=nsamp//4).astype(np.uint).cumsum(),))
 #print(s)
@@ -74,8 +82,10 @@ defines = \
 "#define nvarsd "+str(nvarsd)+"\n"+\
 "#define nvarsg "+str(nvarsg)+"\n"+\
 "#define ninpt "+str(ninpt)+"\n\n"
-kernels = genn.genkern2(ninpt, topology, lambda x: cl.Program(ctx, x).build())
+kernels = genn.genkern2(tosumr, topology, lambda x: cl.Program(ctx, x).build())
 print(kernels)
+
+
 #uint hs["""+str(len(hs))+"""] = {"""+", ".join([str(hh) for hh in hs])+"""}; //Indexes for allocate cutted population to full
 prsrc = """
 __kernel void copy_inp(__global float *inpt, __global float *dnr){
@@ -148,7 +158,7 @@ __kernel void fillgms(__global float *_gms, __global float *_tmpgms, __global ui
 }
 """
 print("\n", prsrc,"\n")
-run = cl.Program(ctx, defines+genn.genkern(ninpt, topology)+"\n"+prsrc).build()
+run = cl.Program(ctx, defines+"\n"+prsrc).build()
 #exit()
 #Metabuffer for opencl datas
 global_offset = None
@@ -171,12 +181,6 @@ o_med = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
 o_min = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
 o_lid = cl.Buffer(ctx, mf.WRITE_ONLY, size=olid.nbytes)
 gmbg = cl.Buffer(ctx, mf.READ_WRITE, size=nvarsg*obuf.nbytes)
-
-#tosumr = pow(2, ceil(log2(ninpt)))
-#sumsg = cl.Buffer(ctx, mf.READ_WRITE, size=tosumr*nsamp*4)
-#reducer.reduce_sum(queue, sumsg, tosumr*nsamp, res_g, nsamp) #For example. Needs to be moved out.
-
-####### Work here!! ################################
 
 
 brsg = cl.Buffer(ctx, mf.READ_WRITE, size=obuf.nbytes)
@@ -257,7 +261,12 @@ for cy in range(1, layertries*10000):
         cl.enqueue_copy(queue, arr_np, gms)
         print("Device coeffs is", arr_np, " Contains {0} NaNs.".format(np.count_nonzero(np.isnan(arr_np))))
     ###Main run below###
-    kernels["ordinal"][k].runnet(queue, (nsamp,), None, gms, dnrg, vsrg, res_g)
+    print("First run Begins")
+    kernels["ordinal"][k].runnet(queue, (tosumr*nsamp,), None, gms, dnrg, vsrg, sumsg)
+    cl.enqueue_copy(queue, sums, sumsg)
+    print("First run Ok\n", len(sums[sums>0.0]))
+    exit()
+    clreducer.reduce_sum(queue, sumsg, tosumr*nsamp, res_g, nsamp) #For example. Needs to be moved out.
     if dbg:
         cl.enqueue_copy(queue, res_np, res_g)
         res_np.sort()
