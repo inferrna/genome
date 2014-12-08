@@ -9,14 +9,14 @@ mf = cl.mem_flags
 
 ctx = cl.create_some_context()
 queue = cl.CommandQueue(ctx)
-N = 5
-tosum = 13000000
+N = 64
+tosum = 130000
 tosumr = pow(2, ceil(log2(tosum)))
 nsamp = tosumr*N
 print("tosumr==", tosumr)
 arr_np = np.empty(nsamp).astype(np.float32)
 arrsnp = arr_np.reshape(N, tosumr)
-obuf = np.empty(5).astype(np.float32)
+obuf = np.empty(N).astype(np.float32)
 for arr in arrsnp:
     np.copyto(arr[:tosum], np.random.rand(tosum).astype(np.float32))
 

@@ -15,6 +15,7 @@ class cl_reduce():
         totpow = ceil(log2(numitems))           #Total max power of 2 to fit all items
         grouppow = ceil(log2(self.n_threads))   #Workgroup size as power of 2
         self.fstsumcount = totpow//grouppow
+        self.npz = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=np.empty(1).astype(np.float32))
         endcnt = 64#totpow%grouppow
         self.r_buf = cl.Buffer(self.ctx, mf.READ_WRITE, size=4*pow(2, totpow-grouppow)) #For first store
         #print("self.fstsumcount==", self.fstsumcount)
@@ -39,6 +40,7 @@ class cl_reduce():
                 barrier(CLK_LOCAL_MEM_FENCE);
             }
             if(lid == 0) r[wid] = b[lid];
+            a[gid] = 0;
         }
         """).build()
         self.prgsm_med = cl.Program(ctx, """
@@ -168,15 +170,17 @@ class cl_reduce():
         print("N==", N)
         i = 0
         while N>self.n_threads:
-            evt = self.prgsm_fst.reduce(queue, (N,), (self.n_threads,), buffers[i%2], buffers[(i+1)%2], loc_buf)
+            _N = (1+(N-1)//self.n_threads)*self.n_threads
+            evt = self.prgsm_fst.reduce(queue, (_N,), (self.n_threads,), buffers[i%2], buffers[(i+1)%2], loc_buf)
             N//=self.n_threads
+            #cl.enqueue_fill_buffer(queue, buffers[i%2], self.npz, 0, _N, wait_for=True)
             i+=1
             print("N==", N)
             evt.wait()
         #arr_np = np.empty(N).astype(np.float32)
         #cl.enqueue_copy(queue, arr_np, buffers[self.fstsumcount%2])
         #print("1d cl totsum==", arr_np.sum())
-        evt = self.prgsm_fst.reduce(queue, (N,), (N//cnt,), buffers[i%2], o_buf, loc_buf)
+        evt = self.prgsm_fst.reduce(queue, (N,), (max(1, N//cnt),), buffers[i%2], o_buf, loc_buf)
         evt.wait()
         #print(evt.profile.end - evt.profile.start)
     def reduce_min(self, queue, a_buf, N, o_buf, o_lid):

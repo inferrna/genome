@@ -14,6 +14,7 @@ import genn
 import pprint
 from idxread import idxs
 from npsolve import runner
+from math import ceil
 pp = pprint.PrettyPrinter(depth=5)
 
 def dec2str(num):
@@ -171,9 +172,9 @@ o_min = cl.Buffer(ctx, mf.WRITE_ONLY, size=obuf.nbytes)
 o_lid = cl.Buffer(ctx, mf.WRITE_ONLY, size=olid.nbytes)
 gmbg = cl.Buffer(ctx, mf.READ_WRITE, size=nvarsg*obuf.nbytes)
 
-tosumr = pow(2, ceil(log2(ninpt)))
-sumsg = cl.Buffer(ctx, mf.READ_WRITE, size=tosumr*nsamp*4)
-reducer.reduce_sum(queue, sumsg, tosumr*nsamp, res_g, nsamp) #For example. Needs to be moved out.
+#tosumr = pow(2, ceil(log2(ninpt)))
+#sumsg = cl.Buffer(ctx, mf.READ_WRITE, size=tosumr*nsamp*4)
+#reducer.reduce_sum(queue, sumsg, tosumr*nsamp, res_g, nsamp) #For example. Needs to be moved out.
 
 ####### Work here!! ################################
 
